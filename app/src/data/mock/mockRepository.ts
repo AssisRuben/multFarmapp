@@ -405,13 +405,13 @@ class MockRepository implements DataRepository {
 
     let profile: Profile;
     if (email.toLowerCase() === GESTOR_EMAIL) {
-      profile = { id: 'gestor-1', nome: 'Gestor(a) da Farmácia', email, role: 'gestor', codigoVendedor: null };
+      profile = { id: 'gestor-1', tenantId: 'mock-tenant', nome: 'Gestor(a) da Farmácia', email, role: 'gestor', codigoVendedor: null };
     } else {
       const vendedor = vendedoresSeed.find((v) => v.email.toLowerCase() === email.toLowerCase());
       if (!vendedor) {
         throw new Error('E-mail ou senha inválidos.');
       }
-      profile = { id: `vendedor-${vendedor.codigo}`, nome: vendedor.nome, email, role: 'vendedor', codigoVendedor: vendedor.codigo };
+      profile = { id: `vendedor-${vendedor.codigo}`, tenantId: 'mock-tenant', nome: vendedor.nome, email, role: 'vendedor', codigoVendedor: vendedor.codigo };
     }
 
     await AsyncStorage.setItem(SESSION_KEY, JSON.stringify(profile));
@@ -932,7 +932,7 @@ class MockRepository implements DataRepository {
     return delay(await getContatosStore());
   }
 
-  async registrarContato(input: RegistrarContatoInput): Promise<void> {
+  async registrarContato(_profile: Profile, input: RegistrarContatoInput): Promise<void> {
     const contatos = await getContatosStore();
     contatos.push({
       codigoCliente: input.codigoCliente,
@@ -993,7 +993,7 @@ class MockRepository implements DataRepository {
     return delay(visivelParaPerfil(profile, linhas));
   }
 
-  async salvarMeta(input: SalvarMetaInput): Promise<void> {
+  async salvarMeta(_profile: Profile, input: SalvarMetaInput): Promise<void> {
     const overrides = await getMetasOverrides();
     overrides[`${input.codigoVendedor}-${input.ano}-${input.mes}`] = {
       valorMetaMensal: input.valorMetaMensal,
@@ -1088,7 +1088,7 @@ class MockRepository implements DataRepository {
     return delay(atividades.filter((a) => a.ativo));
   }
 
-  async salvarAtividadeChecklist(input: {
+  async salvarAtividadeChecklist(_profile: Profile, input: {
     id?: string;
     titulo: string;
     horario: string | null;
@@ -1253,7 +1253,7 @@ class MockRepository implements DataRepository {
     return delay(campanhas.find((c) => c.id === id) ?? null);
   }
 
-  async salvarCampanha(input: SalvarCampanhaInput): Promise<Campanha> {
+  async salvarCampanha(_profile: Profile, input: SalvarCampanhaInput): Promise<Campanha> {
     const campanhas = await getCampanhasStore();
     let salva: Campanha;
 
@@ -1429,7 +1429,7 @@ class MockRepository implements DataRepository {
     return delay([...campanhas].sort((a, b) => b.dataInicio.localeCompare(a.dataInicio)));
   }
 
-  async salvarCampanhaVendaAdicional(input: SalvarCampanhaVendaAdicionalInput): Promise<void> {
+  async salvarCampanhaVendaAdicional(_profile: Profile, input: SalvarCampanhaVendaAdicionalInput): Promise<void> {
     const campanhas = await getCampanhasVendaAdicionalStore();
     const produtos = input.codigosProduto.map((codigoProduto) => ({
       codigoProduto,
@@ -1562,7 +1562,7 @@ class MockRepository implements DataRepository {
     return delay([...campanhas].sort((a, b) => b.dataInicio.localeCompare(a.dataInicio)));
   }
 
-  async salvarCampanhaComplementar(input: SalvarCampanhaComplementarInput): Promise<void> {
+  async salvarCampanhaComplementar(_profile: Profile, input: SalvarCampanhaComplementarInput): Promise<void> {
     const campanhas = await getCampanhasComplementaresStore();
     if (input.id) {
       const existente = campanhas.find((c) => c.id === input.id);
@@ -1656,7 +1656,7 @@ class MockRepository implements DataRepository {
     return delay([...itens].sort((a, b) => b.data.localeCompare(a.data)));
   }
 
-  async salvarProdutoEmFalta(input: SalvarProdutoEmFaltaInput): Promise<void> {
+  async salvarProdutoEmFalta(_profile: Profile, input: SalvarProdutoEmFaltaInput): Promise<void> {
     const itens = await getProdutosEmFaltaStore();
 
     if (input.id) {
@@ -1724,7 +1724,7 @@ class MockRepository implements DataRepository {
     );
   }
 
-  async salvarPendencia(input: SalvarPendenciaInput): Promise<void> {
+  async salvarPendencia(_profile: Profile, input: SalvarPendenciaInput): Promise<void> {
     const itens = await getPendenciasStore();
     itens.push({
       id: `pend-${Date.now()}`,
@@ -1820,7 +1820,7 @@ class MockRepository implements DataRepository {
     );
   }
 
-  async adicionarClienteCarteira(codigoVendedor: number, codigoCliente: number): Promise<void> {
+  async adicionarClienteCarteira(_profile: Profile, codigoVendedor: number, codigoCliente: number): Promise<void> {
     const itens = await getCarteiraClientesStore();
     if (itens.some((i) => i.codigoVendedor === codigoVendedor && i.codigoCliente === codigoCliente)) return;
     itens.push({ id: `cart-${Date.now()}`, codigoVendedor, codigoCliente, criadoEm: new Date().toISOString() });

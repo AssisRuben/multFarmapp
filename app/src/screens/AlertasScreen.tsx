@@ -519,7 +519,7 @@ export function AlertasScreen() {
     const cacheado = cacheGet<AlertasDados>(chaveCache);
     if (cacheado) cacheSet(chaveCache, { ...cacheado, contatos: [...cacheado.contatos, novo] });
     repository
-      .registrarContato({ codigoCliente, motivo, tipoContato, codigoProduto, codigoVendedor: profile.codigoVendedor })
+      .registrarContato(profile, { codigoCliente, motivo, tipoContato, codigoProduto, codigoVendedor: profile.codigoVendedor })
       .catch(() => {
         setContatos((atual) => atual.filter((c) => c !== novo));
         const atual = cacheGet<AlertasDados>(chaveCache);

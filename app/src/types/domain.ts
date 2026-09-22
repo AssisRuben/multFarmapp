@@ -2,6 +2,7 @@ export type Role = 'vendedor' | 'gestor';
 
 export interface Profile {
   id: string;
+  tenantId: string;
   nome: string;
   email: string;
   role: Role;

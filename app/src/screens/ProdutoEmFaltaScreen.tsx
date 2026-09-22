@@ -87,6 +87,7 @@ export function ProdutoEmFaltaScreen() {
   };
 
   const salvar = async () => {
+    if (!profile) return;
     if (!nomeProduto.trim()) {
       alertar('Nome obrigatório', 'Informe o nome do produto que está em falta.');
       return;
@@ -98,7 +99,7 @@ export function ProdutoEmFaltaScreen() {
 
     setSalvando(true);
     try {
-      await repository.salvarProdutoEmFalta({
+      await repository.salvarProdutoEmFalta(profile, {
         id: editandoId ?? undefined,
         nomeProduto: nomeProduto.trim(),
         codigoProduto: codigoVinculado,

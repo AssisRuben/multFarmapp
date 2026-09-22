@@ -117,7 +117,7 @@ export function ChecklistGerenciarScreen() {
 
   const adicionarAtividade = async () => {
     const titulo = novaAtividade.trim();
-    if (!titulo) return;
+    if (!titulo || !profile) return;
 
     if (diasSemanaNovo.length === 0) {
       alertar('Selecione os dias', 'Escolha pelo menos um dia da semana.');
@@ -126,7 +126,7 @@ export function ChecklistGerenciarScreen() {
 
     const horario = horaNovo != null ? `${String(horaNovo).padStart(2, '0')}:00` : null;
 
-    await repository.salvarAtividadeChecklist({
+    await repository.salvarAtividadeChecklist(profile, {
       titulo,
       horario,
       codigosVendedor: codigosVendedorNovo,
@@ -178,7 +178,7 @@ export function ChecklistGerenciarScreen() {
   };
 
   const salvarEdicao = async () => {
-    if (!edicao) return;
+    if (!edicao || !profile) return;
     const titulo = edicao.titulo.trim();
     if (!titulo) {
       alertar('Título obrigatório', 'Digite o título da atividade.');
@@ -191,7 +191,7 @@ export function ChecklistGerenciarScreen() {
 
     setSalvandoEdicao(true);
     try {
-      await repository.salvarAtividadeChecklist({
+      await repository.salvarAtividadeChecklist(profile, {
         id: edicao.id,
         titulo,
         horario: edicao.hora != null ? `${String(edicao.hora).padStart(2, '0')}:00` : null,

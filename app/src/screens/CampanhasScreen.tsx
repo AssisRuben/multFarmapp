@@ -262,6 +262,7 @@ export function CampanhasScreen() {
   };
 
   const salvar = async () => {
+    if (!profile) return;
     if (!nome.trim()) {
       alertar('Nome obrigatório', 'Dê um nome pra campanha antes de salvar.');
       return;
@@ -279,7 +280,7 @@ export function CampanhasScreen() {
 
     setSalvando(true);
     try {
-      await repository.salvarCampanha({
+      await repository.salvarCampanha(profile, {
         id: editandoId ?? undefined,
         nome: nome.trim(),
         dataInicio,

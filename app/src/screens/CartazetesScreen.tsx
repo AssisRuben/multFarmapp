@@ -391,10 +391,10 @@ export function CartazetesScreen() {
   // daquele momento — este botão persiste de volta na campanha salva
   // (achado registrado 05/08, resolvido 18/08/2026).
   const salvarNaCampanha = async () => {
-    if (!campanhaSelecionada) return;
+    if (!campanhaSelecionada || !profile) return;
     setProcessando('campanha');
     try {
-      const salva = await repository.salvarCampanha({
+      const salva = await repository.salvarCampanha(profile, {
         id: campanhaSelecionada.id,
         nome: campanhaSelecionada.nome,
         dataInicio: campanhaSelecionada.dataInicio,

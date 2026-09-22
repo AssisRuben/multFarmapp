@@ -587,6 +587,7 @@ export function SugestaoKitsScreen() {
   const naoSelecionadosMesmo = itensMesmoProduto.filter((i) => !i.selecionado);
 
   const salvar = async () => {
+    if (!profile) return;
     setSalvando(true);
     try {
       const kits: KitMultiProduto[] = selecionados.map((item) => itemParaKit(item, dataInicio, dataFim));
@@ -616,7 +617,7 @@ export function SugestaoKitsScreen() {
       });
       const totalKits = kits.length + produtosMesmoItem.length;
 
-      await repository.salvarCampanha({ nome: nome.trim(), dataInicio, dataFim, produtos: produtosMesmoItem, kits });
+      await repository.salvarCampanha(profile, { nome: nome.trim(), dataInicio, dataFim, produtos: produtosMesmoItem, kits });
       alertar('Campanha criada', `"${nome.trim()}" criada com ${totalKits} kit(s) — ajuste preço e imprima em Cartazetes.`);
       setNome('');
       setItens([]);

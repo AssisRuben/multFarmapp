@@ -120,7 +120,7 @@ function mapearProdutoCatalogo(r: any): ProdutoCatalogo {
 async function buscarProfile(user: User): Promise<Profile | null> {
   const { data: perfil, error } = await supabase
     .from('profiles')
-    .select('id, role, codigo_vendedor')
+    .select('id, tenant_id, role, codigo_vendedor')
     .eq('id', user.id)
     .maybeSingle();
   if (error || !perfil) return null;
@@ -133,6 +133,7 @@ async function buscarProfile(user: User): Promise<Profile | null> {
       .maybeSingle();
     return {
       id: perfil.id,
+      tenantId: perfil.tenant_id,
       nome: vendedor?.nome ?? user.email ?? `Vendedor ${perfil.codigo_vendedor}`,
       email: user.email ?? '',
       role: perfil.role as Role,
@@ -142,6 +143,7 @@ async function buscarProfile(user: User): Promise<Profile | null> {
 
   return {
     id: perfil.id,
+    tenantId: perfil.tenant_id,
     nome: 'Gestor(a) da Farmácia',
     email: user.email ?? '',
     role: perfil.role as Role,
@@ -546,9 +548,10 @@ class SupabaseRepository implements DataRepository {
     }));
   }
 
-  async adicionarClienteCarteira(codigoVendedor: number, codigoCliente: number): Promise<void> {
+  async adicionarClienteCarteira(profile: Profile, codigoVendedor: number, codigoCliente: number): Promise<void> {
     const { data: sessao } = await supabase.auth.getUser();
     const { error } = await supabase.from('carteira_clientes').insert({
+      tenant_id: profile.tenantId,
       codigo_vendedor: codigoVendedor,
       codigo_cliente: codigoCliente,
       adicionado_por: sessao.user?.id ?? null,
@@ -812,8 +815,9 @@ class SupabaseRepository implements DataRepository {
     }));
   }
 
-  async registrarContato(input: RegistrarContatoInput): Promise<void> {
+  async registrarContato(profile: Profile, input: RegistrarContatoInput): Promise<void> {
     const { error } = await supabase.from('contatos_clientes').insert({
+      tenant_id: profile.tenantId,
       codigo_cliente: input.codigoCliente,
       motivo: input.motivo,
       tipo_contato: input.tipoContato,
@@ -904,10 +908,11 @@ class SupabaseRepository implements DataRepository {
   // índice parcial (não dá pra mandar o WHERE junto), então upsert não
   // funciona aqui. Delete + insert é mais simples e sempre correto,
   // ainda que troque uma operação atômica por duas.
-  async salvarMeta(input: SalvarMetaInput): Promise<void> {
-    const linhas: { codigo_vendedor: number; ano: number; mes: number; semana: number | null; valor_meta: number }[] = [
-      { codigo_vendedor: input.codigoVendedor, ano: input.ano, mes: input.mes, semana: null, valor_meta: input.valorMetaMensal },
+  async salvarMeta(profile: Profile, input: SalvarMetaInput): Promise<void> {
+    const linhas: { tenant_id: string; codigo_vendedor: number; ano: number; mes: number; semana: number | null; valor_meta: number }[] = [
+      { tenant_id: profile.tenantId, codigo_vendedor: input.codigoVendedor, ano: input.ano, mes: input.mes, semana: null, valor_meta: input.valorMetaMensal },
       ...input.valoresMetaSemanal.map((valor, i) => ({
+        tenant_id: profile.tenantId,
         codigo_vendedor: input.codigoVendedor,
         ano: input.ano,
         mes: input.mes,
@@ -1005,7 +1010,7 @@ class SupabaseRepository implements DataRepository {
     });
   }
 
-  async salvarAtividadeChecklist(input: {
+  async salvarAtividadeChecklist(profile: Profile, input: {
     id?: string;
     titulo: string;
     horario: string | null;
@@ -1033,14 +1038,18 @@ class SupabaseRepository implements DataRepository {
         .eq('atividade_id', atividadeId);
       if (deleteError) throw deleteError;
     } else {
-      const { data, error } = await supabase.from('atividades_checklist').insert(linha).select('id').single();
+      const { data, error } = await supabase
+        .from('atividades_checklist')
+        .insert({ ...linha, tenant_id: profile.tenantId })
+        .select('id')
+        .single();
       if (error || !data) throw error ?? new Error('Falha ao criar atividade.');
       atividadeId = data.id;
     }
 
     if (input.codigosVendedor.length > 0) {
       const { error } = await supabase.from('atividade_checklist_vendedores').insert(
-        input.codigosVendedor.map((codigo) => ({ atividade_id: atividadeId, codigo_vendedor: codigo }))
+        input.codigosVendedor.map((codigo) => ({ tenant_id: profile.tenantId, atividade_id: atividadeId, codigo_vendedor: codigo }))
       );
       if (error) throw error;
     }
@@ -1123,6 +1132,7 @@ class SupabaseRepository implements DataRepository {
     const hojeIso = todayISO();
     const { error } = await supabase.from('checklist_respostas').upsert(
       {
+        tenant_id: profile.tenantId,
         atividade_id: Number(atividadeId),
         codigo_vendedor: profile.codigoVendedor,
         data: hojeIso,
@@ -1386,7 +1396,7 @@ class SupabaseRepository implements DataRepository {
     return campanha ?? null;
   }
 
-  async salvarCampanha(input: SalvarCampanhaInput): Promise<Campanha> {
+  async salvarCampanha(profile: Profile, input: SalvarCampanhaInput): Promise<Campanha> {
     let campanhaId: number;
 
     if (input.id) {
@@ -1410,7 +1420,7 @@ class SupabaseRepository implements DataRepository {
     } else {
       const { data, error } = await supabase
         .from('campanhas')
-        .insert({ nome: input.nome, data_inicio: input.dataInicio, data_fim: input.dataFim })
+        .insert({ tenant_id: profile.tenantId, nome: input.nome, data_inicio: input.dataInicio, data_fim: input.dataFim })
         .select('id')
         .single();
       if (error || !data) throw error ?? new Error('Falha ao criar campanha.');
@@ -1420,6 +1430,7 @@ class SupabaseRepository implements DataRepository {
     if (input.produtos.length > 0) {
       const { error } = await supabase.from('campanha_produtos').insert(
         input.produtos.map((p) => ({
+          tenant_id: profile.tenantId,
           campanha_id: campanhaId,
           codigo_produto: p.codigoProduto,
           preco_promocional: p.precoPromocional,
@@ -1445,6 +1456,7 @@ class SupabaseRepository implements DataRepository {
         .from('campanha_kits')
         .insert(
           input.kits.map((k) => ({
+            tenant_id: profile.tenantId,
             campanha_id: campanhaId,
             nome: k.nome,
             tipo_precificacao: k.tipoPrecificacao,
@@ -1463,6 +1475,7 @@ class SupabaseRepository implements DataRepository {
       // round-trip pra descobrir o id de cada um.
       const itensKitProdutos = (kitsInseridos ?? []).flatMap((kitSalvo: any, indice: number) =>
         input.kits[indice].produtos.map((p) => ({
+          tenant_id: profile.tenantId,
           kit_id: kitSalvo.id,
           codigo_produto: p.codigoProduto,
           quantidade: p.quantidade,
@@ -1524,10 +1537,11 @@ class SupabaseRepository implements DataRepository {
     return this.carregarCampanhasVendaAdicional();
   }
 
-  async salvarCampanhaVendaAdicional(input: SalvarCampanhaVendaAdicionalInput): Promise<void> {
+  async salvarCampanhaVendaAdicional(profile: Profile, input: SalvarCampanhaVendaAdicionalInput): Promise<void> {
     let campanhaId: number;
 
     const payload = {
+      tenant_id: profile.tenantId,
       nome: input.nome,
       data_inicio: input.dataInicio,
       data_fim: input.dataFim,
@@ -1561,7 +1575,7 @@ class SupabaseRepository implements DataRepository {
     if (input.codigosProduto.length > 0) {
       const { error } = await supabase
         .from('campanha_venda_adicional_produtos')
-        .insert(input.codigosProduto.map((codigoProduto) => ({ campanha_id: campanhaId, codigo_produto: codigoProduto })));
+        .insert(input.codigosProduto.map((codigoProduto) => ({ tenant_id: profile.tenantId, campanha_id: campanhaId, codigo_produto: codigoProduto })));
       if (error) throw error;
     }
   }
@@ -1711,6 +1725,7 @@ class SupabaseRepository implements DataRepository {
     if (idsParaInserir.length > 0) {
       const { error } = await supabase.from('venda_item_complementar').insert(
         idsParaInserir.map((venda_item_id) => ({
+          tenant_id: profile.tenantId,
           venda_item_id,
           codigo_vendedor: codigoVendedor,
           marcado_por: profile.id,
@@ -1738,8 +1753,9 @@ class SupabaseRepository implements DataRepository {
     }));
   }
 
-  async salvarCampanhaComplementar(input: SalvarCampanhaComplementarInput): Promise<void> {
+  async salvarCampanhaComplementar(profile: Profile, input: SalvarCampanhaComplementarInput): Promise<void> {
     const payload = {
+      tenant_id: profile.tenantId,
       data_inicio: input.dataInicio,
       data_fim: input.dataFim,
       valor_minimo: input.valorMinimo,
@@ -1824,13 +1840,14 @@ class SupabaseRepository implements DataRepository {
     // (a tabela tem policy de UPDATE, ver rls_policies.sql).
     const { error } = await supabase.from('venda_complementar_oferta_diaria').upsert(
       {
+        tenant_id: profile.tenantId,
         codigo_vendedor: codigoVendedor,
         data,
         clientes_ofertados: clientesOfertados,
         atualizado_por: profile.id,
         atualizado_em: new Date().toISOString(),
       },
-      { onConflict: 'codigo_vendedor,data' }
+      { onConflict: 'tenant_id,codigo_vendedor,data' }
     );
     if (error) throw error;
   }
@@ -1874,7 +1891,7 @@ class SupabaseRepository implements DataRepository {
     }));
   }
 
-  async salvarProdutoEmFalta(input: SalvarProdutoEmFaltaInput): Promise<void> {
+  async salvarProdutoEmFalta(profile: Profile, input: SalvarProdutoEmFaltaInput): Promise<void> {
     if (input.id) {
       const { error } = await supabase
         .from('produtos_em_falta')
@@ -1889,6 +1906,7 @@ class SupabaseRepository implements DataRepository {
     } else {
       const { data: sessao } = await supabase.auth.getUser();
       const { error } = await supabase.from('produtos_em_falta').insert({
+        tenant_id: profile.tenantId,
         nome_produto: input.nomeProduto,
         codigo_produto: input.codigoProduto,
         data: input.data,
@@ -1975,7 +1993,7 @@ class SupabaseRepository implements DataRepository {
     }));
   }
 
-  async salvarPendencia(input: SalvarPendenciaInput): Promise<void> {
+  async salvarPendencia(profile: Profile, input: SalvarPendenciaInput): Promise<void> {
     // path com nome único (timestamp + sufixo aleatório) em vez de
     // codigo_vendedor/id como em receitas — aqui não existe id ainda
     // (registro novo) nem "dono da venda", então não tem por que
@@ -1990,6 +2008,7 @@ class SupabaseRepository implements DataRepository {
 
     const { data: sessao } = await supabase.auth.getUser();
     const { error } = await supabase.from('pendencias').insert({
+      tenant_id: profile.tenantId,
       nome_cliente: input.nomeCliente,
       produtos: input.produtos,
       foto_url: path,
@@ -2068,7 +2087,7 @@ class SupabaseRepository implements DataRepository {
   }
 
   async classificarItensCompra(
-    _profile: Profile,
+    profile: Profile,
     codigosProduto: number[],
     motivo: MotivoClassificacaoCompra,
     observacao?: string
@@ -2076,6 +2095,7 @@ class SupabaseRepository implements DataRepository {
     if (codigosProduto.length === 0) return;
     const { data: sessao } = await supabase.auth.getUser();
     const linhas = codigosProduto.map((codigo) => ({
+      tenant_id: profile.tenantId,
       codigo_produto: codigo,
       motivo,
       observacao: observacao ?? null,
@@ -2084,7 +2104,7 @@ class SupabaseRepository implements DataRepository {
     }));
     // upsert (não insert): reclassificar um produto já classificado
     // substitui a linha em vez de dar erro de unique constraint.
-    const { error } = await supabase.from('compras_classificacoes').upsert(linhas, { onConflict: 'codigo_produto' });
+    const { error } = await supabase.from('compras_classificacoes').upsert(linhas, { onConflict: 'tenant_id,codigo_produto' });
     if (error) throw error;
   }
 
@@ -2162,7 +2182,7 @@ class SupabaseRepository implements DataRepository {
     return calcularRelatorioPrecificacao(catalogo, vendaPorProduto, codigosComDescontoAtivo);
   }
 
-  async getMetricasMensais(_profile: Profile, mesReferencia: string, ateData?: string): Promise<MetricaMensal[]> {
+  async getMetricasMensais(profile: Profile, mesReferencia: string, ateData?: string): Promise<MetricaMensal[]> {
     const hoje = new Date();
     const mesAtualIso = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}-01`;
 
@@ -2173,6 +2193,7 @@ class SupabaseRepository implements DataRepository {
     // função que o fechamento usa (calcular_metricas_mes).
     if (mesReferencia === mesAtualIso || ateData) {
       const { data, error } = await supabase.rpc('calcular_metricas_mes', {
+        p_tenant_id: profile.tenantId,
         mes_ref: mesReferencia,
         data_fim: ateData ?? null,
       });

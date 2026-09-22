@@ -3,19 +3,10 @@
 -- e define seu papel (vendedor vs gestor).
 -- Preenchido manualmente (ou por processo administrativo) ao
 -- criar cada usuário no Supabase Auth — não é self-signup.
+-- Tabela em si criada em schema.sql (entre vendedores e
+-- compras_classificacoes, que já referenciam profiles) — aqui só
+-- RLS e policies.
 -- ============================================================
-create table profiles (
-  id uuid primary key references auth.users(id) on delete cascade,
-  codigo_vendedor integer references vendedores(codigo),
-  role text not null check (role in ('vendedor', 'gestor')),
-  -- Expo push token do dispositivo — gravado pelo próprio app no login
-  -- (ver AuthContext/lib/notifications.ts obterPushToken), lido pelo
-  -- workflow n8n de notificação de comissão (roda como service_role,
-  -- ignora RLS). Não é sensível, mas só o dono deveria escrever nele.
-  expo_push_token text,
-  created_at timestamptz default now()
-);
-
 alter table profiles enable row level security;
 
 create policy "profiles: usuario le o proprio perfil"

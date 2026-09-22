@@ -102,10 +102,10 @@ export function CarteiraClientesScreen() {
   const codigoVendedorAlvo = ehGestor ? vendedorSelecionado : profile?.codigoVendedor ?? null;
 
   const adicionar = async (cliente: ClienteBusca) => {
-    if (codigoVendedorAlvo == null) return;
+    if (codigoVendedorAlvo == null || !profile) return;
     setAdicionando(cliente.codigo);
     try {
-      await repository.adicionarClienteCarteira(codigoVendedorAlvo, cliente.codigo);
+      await repository.adicionarClienteCarteira(profile, codigoVendedorAlvo, cliente.codigo);
     } catch (erro) {
       setAdicionando(null);
       alertar('Erro ao adicionar', mensagemErro(erro));

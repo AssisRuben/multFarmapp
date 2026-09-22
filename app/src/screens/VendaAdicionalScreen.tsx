@@ -234,6 +234,7 @@ export function VendaAdicionalScreen() {
   };
 
   const salvar = async () => {
+    if (!profile) return;
     if (!nome.trim()) {
       alertar('Nome obrigatório', 'Dê um nome pra campanha antes de salvar.');
       return;
@@ -279,7 +280,7 @@ export function VendaAdicionalScreen() {
 
     setSalvando(true);
     try {
-      await repository.salvarCampanhaVendaAdicional({
+      await repository.salvarCampanhaVendaAdicional(profile, {
         id: editandoId ?? undefined,
         nome: nome.trim(),
         dataInicio,

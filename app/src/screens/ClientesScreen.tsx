@@ -72,7 +72,7 @@ export function ClientesScreen() {
     const novo: ContatoCliente = { codigoCliente, motivo: 'resgate', codigoProduto: null, contatadoEm: new Date().toISOString() };
     setContatos((atual) => [...atual, novo]);
     repository
-      .registrarContato({ codigoCliente, motivo: 'resgate', tipoContato, codigoVendedor: profile.codigoVendedor })
+      .registrarContato(profile, { codigoCliente, motivo: 'resgate', tipoContato, codigoVendedor: profile.codigoVendedor })
       .catch(() => {
         // se falhar em salvar, desfaz o otimismo — melhor o cliente
         // reaparecer do que sumir da lista sem o contato ter sido

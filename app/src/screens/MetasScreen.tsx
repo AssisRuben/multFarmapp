@@ -129,6 +129,7 @@ export function MetasScreen() {
   // 29,2%, dados pelo usuário). Vendedor com campo em branco é pulado
   // (não zera meta de quem não for atualizado nesse lançamento).
   const salvarLote = async () => {
+    if (!profile) return;
     const entradas = Object.entries(valoresLote).filter(([, texto]) => texto.trim() !== '');
     if (entradas.length === 0) {
       alertar('Nada pra salvar', 'Preencha a meta de pelo menos um vendedor.');
@@ -151,7 +152,7 @@ export function MetasScreen() {
           number,
           number,
         ];
-        await repository.salvarMeta({
+        await repository.salvarMeta(profile, {
           codigoVendedor: Number(codigo),
           ano: anoLote,
           mes: mesLote,

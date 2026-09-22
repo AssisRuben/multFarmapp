@@ -109,6 +109,7 @@ export function PendenciasScreen() {
   };
 
   const registrar = async () => {
+    if (!profile) return;
     if (!nomeCliente.trim()) {
       alertar('Cliente obrigatório', 'Informe o nome do cliente.');
       return;
@@ -124,7 +125,7 @@ export function PendenciasScreen() {
 
     setSalvando(true);
     try {
-      await repository.salvarPendencia({ nomeCliente: nomeCliente.trim(), produtos: produtos.trim(), fotoUri });
+      await repository.salvarPendencia(profile, { nomeCliente: nomeCliente.trim(), produtos: produtos.trim(), fotoUri });
       limparFormulario();
       await carregarLista();
     } catch (erro) {

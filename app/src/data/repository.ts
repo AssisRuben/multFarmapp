@@ -129,7 +129,7 @@ export interface DataRepository {
   // CPF, pra escolher quem adicionar na carteira — limitada (não
   // carrega o cadastro inteiro).
   buscarClientesParaCarteira(termo: string): Promise<ClienteBusca[]>;
-  adicionarClienteCarteira(codigoVendedor: number, codigoCliente: number): Promise<void>;
+  adicionarClienteCarteira(profile: Profile, codigoVendedor: number, codigoCliente: number): Promise<void>;
   removerClienteCarteira(id: string): Promise<void>;
 
   // Histórico de compra do cliente (qualquer vendedor), mostrado ao
@@ -184,12 +184,12 @@ export interface DataRepository {
   // janela, de aniversário); cada tela filtra pela janela do seu
   // motivo específico.
   getContatosRecentes(profile: Profile): Promise<ContatoCliente[]>;
-  registrarContato(input: RegistrarContatoInput): Promise<void>;
+  registrarContato(profile: Profile, input: RegistrarContatoInput): Promise<void>;
 
   // Metas: vendedor só as próprias, gestor todas. `salvarMeta` é usado
   // pela tela de administração (gestor-only na UI).
   getMetas(profile: Profile, ano: number, mes: number): Promise<MetaVendedor[]>;
-  salvarMeta(input: SalvarMetaInput): Promise<void>;
+  salvarMeta(profile: Profile, input: SalvarMetaInput): Promise<void>;
 
   // Lista de vendedores ativos pra lançamento em massa de meta mensal
   // (tela Metas do gestor) — ao contrário de getMetas, traz todo mundo
@@ -206,7 +206,7 @@ export interface DataRepository {
   // Checklist diário: `getAtividadesChecklist` traz só as ativas para
   // vendedor, e todas (incl. inativas) para gestor gerenciar.
   getAtividadesChecklist(profile: Profile): Promise<AtividadeChecklist[]>;
-  salvarAtividadeChecklist(input: {
+  salvarAtividadeChecklist(profile: Profile, input: {
     id?: string;
     titulo: string;
     horario: string | null;
@@ -243,14 +243,14 @@ export interface DataRepository {
   // Fetch dedicado de UMA campanha (edição) — resolve nome/código de
   // barras de verdade, diferente de getCampanhas (lista, mais leve).
   getCampanha(profile: Profile, id: string): Promise<Campanha | null>;
-  salvarCampanha(input: SalvarCampanhaInput): Promise<Campanha>;
+  salvarCampanha(profile: Profile, input: SalvarCampanhaInput): Promise<Campanha>;
   excluirCampanha(id: string): Promise<void>;
 
   // Venda adicional — gestor cria/edita (aba "Venda adicional"), todo
   // vendedor lê (card em Alertas). Prêmio é só informativo, não entra
   // no fechamento de comissão.
   getCampanhasVendaAdicional(profile: Profile): Promise<CampanhaVendaAdicional[]>;
-  salvarCampanhaVendaAdicional(input: SalvarCampanhaVendaAdicionalInput): Promise<void>;
+  salvarCampanhaVendaAdicional(profile: Profile, input: SalvarCampanhaVendaAdicionalInput): Promise<void>;
   excluirCampanhaVendaAdicional(id: string): Promise<void>;
   getVendasVendaAdicional(profile: Profile, campanhaId: string): Promise<VendaVendaAdicional[]>;
 
@@ -268,7 +268,7 @@ export interface DataRepository {
     itemIdsMarcados: string[]
   ): Promise<void>;
   getCampanhasComplementares(profile: Profile): Promise<CampanhaComplementar[]>;
-  salvarCampanhaComplementar(input: SalvarCampanhaComplementarInput): Promise<void>;
+  salvarCampanhaComplementar(profile: Profile, input: SalvarCampanhaComplementarInput): Promise<void>;
   excluirCampanhaComplementar(id: string): Promise<void>;
   getVendasComplementaresCampanha(profile: Profile, campanhaId: string): Promise<VendaComplementarMarcada[]>;
   // Contagem autodeclarada de clientes ofertados no dia — mesma lógica
@@ -284,7 +284,7 @@ export interface DataRepository {
   // reporta/edita/apaga (não é gestor-only, é registro rápido de
   // balcão). getProdutosEmFalta traz tudo, a tela filtra pro mês.
   getProdutosEmFalta(profile: Profile): Promise<ProdutoEmFalta[]>;
-  salvarProdutoEmFalta(input: SalvarProdutoEmFaltaInput): Promise<void>;
+  salvarProdutoEmFalta(profile: Profile, input: SalvarProdutoEmFaltaInput): Promise<void>;
   excluirProdutoEmFalta(id: string): Promise<void>;
   // Relatório de compra a partir das faltas registradas (aba Compras,
   // 18/08/2026) — enriquece com custo/fornecedor quando dá. Gerar o
@@ -298,7 +298,7 @@ export interface DataRepository {
   // Produto em falta. getPendencias traz só as ATIVAS (baixada=false);
   // darBaixaPendencia marca resolvida, não apaga.
   getPendencias(profile: Profile): Promise<Pendencia[]>;
-  salvarPendencia(input: SalvarPendenciaInput): Promise<void>;
+  salvarPendencia(profile: Profile, input: SalvarPendenciaInput): Promise<void>;
   darBaixaPendencia(id: string): Promise<void>;
 
   // Compras (Dose Certa) — gestor-only na UI. Fornecedor sugerido e

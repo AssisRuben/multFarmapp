@@ -13,6 +13,10 @@
 //                     porta 5432 — NÃO a Transaction Pooler nem a
 //                     conexão direta; ver coletor/README.md pros
 //                     detalhes de por quê)
+//   TENANT_ID       — uuid da farmácia em `tenants.id` (multi-tenant,
+//                     ver supabase/migracao_multi_tenant_fase0.sql).
+//                     Toda tabela de negócio exige tenant_id desde a
+//                     Fase 1 — sem isso o script recusa rodar.
 //
 // Opcionais:
 //   DATA_INICIAL    — default '2026-01-01T00:00:00-03:00'
@@ -37,6 +41,7 @@ const { Client } = require('pg');
 
 const TRIER_TOKEN = process.env.TRIER_TOKEN;
 const DATABASE_URL = process.env.DATABASE_URL;
+const TENANT_ID = process.env.TENANT_ID;
 const BASE_URL = process.env.TRIER_BASE_URL || 'https://api-sgf-gateway.triersistemas.com.br/sgfpod1/rest/integracao';
 const DATA_INICIAL = new Date(process.env.DATA_INICIAL || '2026-01-01T00:00:00-03:00');
 const DATA_FINAL = new Date();
@@ -53,6 +58,10 @@ if (!TRIER_TOKEN) {
 }
 if (!DATABASE_URL) {
   console.error('Faltou DATABASE_URL (connection string do Session Pooler do Supabase — ver coletor/README.md).');
+  process.exit(1);
+}
+if (!TENANT_ID) {
+  console.error('Faltou TENANT_ID (uuid da farmácia em `tenants.id` — ver supabase/migracao_multi_tenant_fase0.sql). Toda tabela de negócio agora exige tenant_id.');
   process.exit(1);
 }
 
@@ -178,21 +187,28 @@ function pgVal(v) {
 // Upsert em lote com placeholders parametrizados ($1, $2, ...) — mais
 // seguro que a interpolação de string usada nos Code nodes do n8n
 // (que precisa disso por limitação do Code node; aqui não precisa).
+// tenant_id é sempre a 1a coluna e sempre entra no alvo do ON CONFLICT —
+// centralizado aqui pra toda função de sincronização que usa este
+// helper (vendedores, clientes, produto_catalogo, fornecedores,
+// atendimentos) ganhar isso de graça, sem precisar mexer em cada uma.
 async function upsertLote(client, { tabela, colunas, linhas, conflito, atualizarColunas, tamanhoLote = 500 }) {
+  const colunasComTenant = ['tenant_id', ...colunas];
+  const conflitoComTenant = `tenant_id, ${conflito}`;
   let total = 0;
   for (let inicio = 0; inicio < linhas.length; inicio += tamanhoLote) {
     const lote = linhas.slice(inicio, inicio + tamanhoLote);
     const valores = [];
     const grupos = lote.map((linha, i) => {
-      const base = i * colunas.length;
-      valores.push(...linha.map(pgVal));
-      return `(${colunas.map((_, j) => `$${base + j + 1}`).join(', ')})`;
+      const linhaComTenant = [TENANT_ID, ...linha];
+      const base = i * colunasComTenant.length;
+      valores.push(...linhaComTenant.map(pgVal));
+      return `(${colunasComTenant.map((_, j) => `$${base + j + 1}`).join(', ')})`;
     });
     const updateSet = atualizarColunas.map((c) => `${c} = EXCLUDED.${c}`).join(', ');
     await client.query(
-      `INSERT INTO ${tabela} (${colunas.join(', ')})
+      `INSERT INTO ${tabela} (${colunasComTenant.join(', ')})
        VALUES ${grupos.join(',\n')}
-       ON CONFLICT (${conflito}) DO UPDATE SET ${updateSet}`,
+       ON CONFLICT (${conflitoComTenant}) DO UPDATE SET ${updateSet}`,
       valores
     );
     total += lote.length;
@@ -291,10 +307,11 @@ async function sincronizarCompras(client) {
   let totalItens = 0;
   for (const compra of linhas) {
     const { rows } = await client.query(
-      `INSERT INTO compras (data_entrada, numero_nota_fiscal, codigo_fornecedor, valor_total_nota, valor_total_produtos, quantidade_itens, chave_acesso_nfe)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
+      `INSERT INTO compras (tenant_id, data_entrada, numero_nota_fiscal, codigo_fornecedor, valor_total_nota, valor_total_produtos, quantidade_itens, chave_acesso_nfe)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
        RETURNING id`,
       [
+        TENANT_ID,
         compra.dataEntrada ?? null,
         compra.numeroNotaFiscal ?? null,
         compra.codigoFornecedor ?? null,
@@ -323,15 +340,17 @@ async function sincronizarCompras(client) {
 }
 
 async function upsertLoteSemConflito(client, { tabela, colunas, linhas, tamanhoLote = 500 }) {
+  const colunasComTenant = ['tenant_id', ...colunas];
   for (let inicio = 0; inicio < linhas.length; inicio += tamanhoLote) {
     const lote = linhas.slice(inicio, inicio + tamanhoLote);
     const valores = [];
     const grupos = lote.map((linha, i) => {
-      const base = i * colunas.length;
-      valores.push(...linha.map(pgVal));
-      return `(${colunas.map((_, j) => `$${base + j + 1}`).join(', ')})`;
+      const linhaComTenant = [TENANT_ID, ...linha];
+      const base = i * colunasComTenant.length;
+      valores.push(...linhaComTenant.map(pgVal));
+      return `(${colunasComTenant.map((_, j) => `$${base + j + 1}`).join(', ')})`;
     });
-    await client.query(`INSERT INTO ${tabela} (${colunas.join(', ')}) VALUES ${grupos.join(',\n')}`, valores);
+    await client.query(`INSERT INTO ${tabela} (${colunasComTenant.join(', ')}) VALUES ${grupos.join(',\n')}`, valores);
   }
 }
 
@@ -397,12 +416,12 @@ async function sincronizarVendas(client) {
   // sgf-incremental.n8n.json), que fazem UPDATE isolado, sem tocar o
   // resto da linha.
   const COLUNAS_VENDA = [
-    'numero_nota', 'data_emissao', 'hora_emissao', 'codigo_vendedor',
+    'tenant_id', 'numero_nota', 'data_emissao', 'hora_emissao', 'codigo_vendedor',
     'codigo_cliente', 'entrega', 'pagamento_na_entrega', 'condicao_pagamento', 'vlr_troco', 'numero_cupom_fiscal',
     'numero_nota_fiscal', 'xml_nfe', 'cod_parceiro', 'cod_filial', 'venda_ifood', 'venda_ecommerce', 'cod_ecommerce',
     'ser_nota_fiscal', 'modelo_venda', 'dados_entrega',
   ];
-  const UPDATE_SET_VENDA = COLUNAS_VENDA.slice(1)
+  const UPDATE_SET_VENDA = COLUNAS_VENDA.slice(2) // pula tenant_id e numero_nota (chave do conflito)
     .map((c) => `${c} = EXCLUDED.${c}`)
     .join(', ') + ', updated_at = now()';
 
@@ -423,7 +442,7 @@ async function sincronizarVendas(client) {
     const grupos = subset.map((v, i) => {
       const dataEmissao = v.dataEmissao ? String(v.dataEmissao).slice(0, 10) : null;
       const linha = [
-        v.numeroNota, dataEmissao, horaParaPg(v.horaEmissao),
+        TENANT_ID, v.numeroNota, dataEmissao, horaParaPg(v.horaEmissao),
         v.codigoVendedor ?? null, v.codigoCliente ?? null, v.entrega ?? null, v.pagamentoNaEntrega ?? null,
         v.condicaoPagamento ?? null, v.vlrTroco ?? null, v.numeroCupomFiscal ?? null, v.numeroNotaFiscal ?? null,
         v.xmlNfe ?? null, v.codParceiro ?? null, v.codFilial ?? null, v.vendaIfood ?? null, v.vendaEcommerce === 'S',
@@ -464,10 +483,10 @@ async function sincronizarVendas(client) {
     const semSerie = lote.filter((v) => v.serNotaFiscal == null);
 
     const idPorChave = new Map();
-    for (const r of await inserirVendasRetornando(comSerie, '(numero_nota, cod_filial, ser_nota_fiscal)')) {
+    for (const r of await inserirVendasRetornando(comSerie, '(tenant_id, numero_nota, cod_filial, ser_nota_fiscal)')) {
       idPorChave.set(chaveVenda(r.numero_nota, r.cod_filial, r.ser_nota_fiscal), r.id);
     }
-    for (const r of await inserirVendasRetornando(semSerie, '(numero_nota, cod_filial) WHERE ser_nota_fiscal IS NULL')) {
+    for (const r of await inserirVendasRetornando(semSerie, '(tenant_id, numero_nota, cod_filial) WHERE ser_nota_fiscal IS NULL')) {
       idPorChave.set(chaveVenda(r.numero_nota, r.cod_filial, r.ser_nota_fiscal), r.id);
     }
 
@@ -526,14 +545,16 @@ async function sincronizarVendas(client) {
 
 async function upsertLoteSemConflitoIgnorando(client, tabela, colunas, linhas) {
   if (linhas.length === 0) return;
+  const colunasComTenant = ['tenant_id', ...colunas];
   const valores = [];
   const grupos = linhas.map((linha, i) => {
-    const base = i * colunas.length;
-    valores.push(...linha.map(pgVal));
-    return `(${colunas.map((_, j) => `$${base + j + 1}`).join(', ')})`;
+    const linhaComTenant = [TENANT_ID, ...linha];
+    const base = i * colunasComTenant.length;
+    valores.push(...linhaComTenant.map(pgVal));
+    return `(${colunasComTenant.map((_, j) => `$${base + j + 1}`).join(', ')})`;
   });
   await client.query(
-    `INSERT INTO ${tabela} (${colunas.join(', ')}) VALUES ${grupos.join(',\n')} ON CONFLICT (codigo) DO NOTHING`,
+    `INSERT INTO ${tabela} (${colunasComTenant.join(', ')}) VALUES ${grupos.join(',\n')} ON CONFLICT (tenant_id, codigo) DO NOTHING`,
     valores
   );
 }

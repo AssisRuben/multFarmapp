@@ -2,29 +2,21 @@
   "name": "Coletor SGF -> Supabase (incremental)",
   "nodes": [
     {
-      "id": "nota-geral",
+      "parameters": {
+        "content": "## Coletor SGF -> Supabase\n\nRoda a cada 15 min (Schedule Trigger). Para cada entidade (vendedor, cliente, venda+itens, atendimentos diarios, cancelamento de venda, devolucao):\n1. Le o cursor em `sync_control` (autoinicializa se nao existir linha ainda) -- exceto Devolucao, que nao usa cursor (ver nota do fluxo)\n2. HTTP Request node chama a API SGF (`obter-alterados-v1` com o cursor como `dataInicial`, autenticacao via credencial Header Auth, nunca no workflow)\n3. Code node monta um INSERT...ON CONFLICT (upsert) em SQL puro a partir da resposta -- exceto Cancelamento/Devolucao, que so fazem UPDATE em vendas ja existentes (ver nota de cada fluxo)\n4. Executa no Postgres (Supabase) e atualiza o cursor\n\n**Antes de importar, crie 2 credenciais no n8n:**\n- Header Auth chamada **SGF Trier - Bearer**: header `Authorization`, valor `Bearer <token>` (o token que a Trier liberou -- NUNCA cole no workflow, so no cofre de credenciais)\n- Postgres chamada **Supabase Postgres**: use o host do Session Pooler (nao o de conexao direta -- direto e IPv6-only e pode nao ser alcancavel da sua VPS), porta 5432, user `postgres.<project-ref>`\n\n**Antes de rodar pela 1a vez**, aplique `coletor/migracao_coletor.sql` no Supabase (adiciona constraint que falta em `venda_itens`).\n\n**[12/08 removido, 24/08 reinvestigado e reconfirmado o falso-positivo, 26/08 reativado de vez] Fluxo de Cancelamento**: removido em 12/08 apos achar que `tipoCancelamento='E'` marcava vendas normais (nota 750651 aparecia 'Finalizada Caixa' num relatorio da Trier sem nada de cancelamento). Reinvestigado em 24/08 inspecionando o payload completo do endpoint -- sem campo tipo 'motivo'/'situacao' que diferencie devolucao real de estorno de cartao, reconfirmando a duvida so com os dados da API. Reativado em 26/08 depois do suporte da Trier confirmar HUMANAMENTE por WhatsApp, com print do relatorio 'Vendas Excluidas', que a propria 750651 foi excluida de verdade -- a verificacao de 12/08 (e a reinvestigacao de 24/08, que repetiu o mesmo metodo) checaram o relatorio errado (uma nota pode ficar 'Finalizada Caixa' num relatorio e aparecer excluida em outro, o status nao e retroativamente atualizado). Ou seja: o campo estava certo o tempo todo, o erro era de verificacao, nao de dado -- so a confirmacao direta da Trier resolveu, inspecionar o payload sozinho nao seria suficiente. Confirmado tambem que venda excluida SINCRONIZA normalmente via `/venda/obter-alterados-v1` sem nenhum sinal de exclusao -- so o endpoint separado `/venda/cancelamento/obter-alterados-v1` traz `tipoCancelamento`. Ver `coletor/README.md` pro historico completo.\n\n**[26/08/2026] Fluxo de Devolucao (novo)**: mecanismo DIFERENTE de cancelamento -- devolucao nao aparece em `tipoCancelamento` (so viu valor 'E' na pratica, nunca 'D'), o vinculo mora num endpoint totalmente separado, de PARCELAS DE CARTAO: `/parcelas-cartao/estorno-v1`. Ver nota do proprio fluxo mais abaixo pros detalhes.\n\n**Se o fluxo de Venda ja rodava antes dos fluxos de Cancelamento/Devolucao voltarem a existir/serem criados**, rode `coletor/backfill_cancelamentos.js` e `coletor/backfill_devolucoes.js` uma vez cada pra marcar o que ja sincronizou sem essa informacao -- os fluxos novos so cobrem daqui pra frente.\n\n**Limitacao conhecida**: sem paginacao real. Cada chamada pede ate 999 registros (limite da propria API -- valores acima disso retornam 400 'nao pode ser superior a 999'); se um ciclo de 15 min tiver mais alteracoes que isso (deveria ser raro), sobra pro proximo ciclo (o cursor so avanca pra 'agora' mesmo tendo cortado, entao registros no meio do corte NAO se perdem, so atrasam pro fim da fila incremental seguinte -- mas revise se aparecer o aviso 'pagina cheia' no log com frequencia).",
+        "height": 460,
+        "width": 560
+      },
+      "id": "cc37c3cb-245b-48bb-a67b-36cba1cb6c8e",
       "name": "Leia antes de importar",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
-        -320,
-        -80
-      ],
-      "parameters": {
-        "width": 560,
-        "height": 460,
-        "content": "## Coletor SGF -> Supabase\n\nRoda a cada 15 min (Schedule Trigger). Para cada entidade (vendedor, cliente, venda+itens, atendimentos diarios, cancelamento de venda, devolucao):\n1. Le o cursor em `sync_control` (autoinicializa se nao existir linha ainda) -- exceto Devolucao, que nao usa cursor (ver nota do fluxo)\n2. HTTP Request node chama a API SGF (`obter-alterados-v1` com o cursor como `dataInicial`, autenticacao via credencial Header Auth, nunca no workflow)\n3. Code node monta um INSERT...ON CONFLICT (upsert) em SQL puro a partir da resposta -- exceto Cancelamento/Devolucao, que so fazem UPDATE em vendas ja existentes (ver nota de cada fluxo)\n4. Executa no Postgres (Supabase) e atualiza o cursor\n\n**Antes de importar, crie 2 credenciais no n8n:**\n- Header Auth chamada **SGF Trier - Bearer**: header `Authorization`, valor `Bearer <token>` (o token que a Trier liberou -- NUNCA cole no workflow, so no cofre de credenciais)\n- Postgres chamada **Supabase Postgres**: use o host do Session Pooler (nao o de conexao direta -- direto e IPv6-only e pode nao ser alcancavel da sua VPS), porta 5432, user `postgres.<project-ref>`\n\n**Antes de rodar pela 1a vez**, aplique `coletor/migracao_coletor.sql` no Supabase (adiciona constraint que falta em `venda_itens`).\n\n**[12/08 removido, 24/08 reinvestigado e reconfirmado o falso-positivo, 26/08 reativado de vez] Fluxo de Cancelamento**: removido em 12/08 apos achar que `tipoCancelamento='E'` marcava vendas normais (nota 750651 aparecia 'Finalizada Caixa' num relatorio da Trier sem nada de cancelamento). Reinvestigado em 24/08 inspecionando o payload completo do endpoint -- sem campo tipo 'motivo'/'situacao' que diferencie devolucao real de estorno de cartao, reconfirmando a duvida so com os dados da API. Reativado em 26/08 depois do suporte da Trier confirmar HUMANAMENTE por WhatsApp, com print do relatorio 'Vendas Excluidas', que a propria 750651 foi excluida de verdade -- a verificacao de 12/08 (e a reinvestigacao de 24/08, que repetiu o mesmo metodo) checaram o relatorio errado (uma nota pode ficar 'Finalizada Caixa' num relatorio e aparecer excluida em outro, o status nao e retroativamente atualizado). Ou seja: o campo estava certo o tempo todo, o erro era de verificacao, nao de dado -- so a confirmacao direta da Trier resolveu, inspecionar o payload sozinho nao seria suficiente. Confirmado tambem que venda excluida SINCRONIZA normalmente via `/venda/obter-alterados-v1` sem nenhum sinal de exclusao -- so o endpoint separado `/venda/cancelamento/obter-alterados-v1` traz `tipoCancelamento`. Ver `coletor/README.md` pro historico completo.\n\n**[26/08/2026] Fluxo de Devolucao (novo)**: mecanismo DIFERENTE de cancelamento -- devolucao nao aparece em `tipoCancelamento` (so viu valor 'E' na pratica, nunca 'D'), o vinculo mora num endpoint totalmente separado, de PARCELAS DE CARTAO: `/parcelas-cartao/estorno-v1`. Ver nota do proprio fluxo mais abaixo pros detalhes.\n\n**Se o fluxo de Venda ja rodava antes dos fluxos de Cancelamento/Devolucao voltarem a existir/serem criados**, rode `coletor/backfill_cancelamentos.js` e `coletor/backfill_devolucoes.js` uma vez cada pra marcar o que ja sincronizou sem essa informacao -- os fluxos novos so cobrem daqui pra frente.\n\n**Limitacao conhecida**: sem paginacao real. Cada chamada pede ate 999 registros (limite da propria API -- valores acima disso retornam 400 'nao pode ser superior a 999'); se um ciclo de 15 min tiver mais alteracoes que isso (deveria ser raro), sobra pro proximo ciclo (o cursor so avanca pra 'agora' mesmo tendo cortado, entao registros no meio do corte NAO se perdem, so atrasam pro fim da fila incremental seguinte -- mas revise se aparecer o aviso 'pagina cheia' no log com frequencia)."
-      }
+        1904,
+        688
+      ]
     },
     {
-      "id": "trigger",
-      "name": "A cada 15 min",
-      "type": "n8n-nodes-base.scheduleTrigger",
-      "typeVersion": 1.2,
-      "position": [
-        -320,
-        460
-      ],
       "parameters": {
         "rule": {
           "interval": [
@@ -34,539 +26,552 @@
             }
           ]
         }
-      }
+      },
+      "id": "8b72ce57-6fbd-4f35-95ad-ea2d41de39b9",
+      "name": "A cada 15 min",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        1520,
+        1408
+      ]
     },
     {
-      "id": "vend-nota",
+      "parameters": {
+        "content": "### Vendedor\nsync_control.entity_name = 'vendedor' | tabela: vendedores (PK codigo)",
+        "width": 1520
+      },
+      "id": "dc51a373-468f-4b7e-a0f2-a4a4c8e4f277",
       "name": "Nota - Vendedor",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
-        0,
-        20
-      ],
-      "parameters": {
-        "width": 1520,
-        "height": 160,
-        "content": "### Vendedor\nsync_control.entity_name = 'vendedor' | tabela: vendedores (PK codigo)"
-      }
+        2992,
+        896
+      ]
     },
     {
-      "id": "vend-cursor",
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH boot AS (\n  INSERT INTO sync_control (tenant_id, entity_name, last_cursor)\n  VALUES ('{{ $('Para cada tenant ativo').item.json.tenant_id }}', 'vendedor', '2000-01-01T00:00:00-03:00')\n  ON CONFLICT (tenant_id, entity_name) DO NOTHING\n  RETURNING last_cursor\n),\ncursor_atual AS (\n  SELECT COALESCE(\n    (SELECT last_cursor FROM boot),\n    (SELECT last_cursor FROM sync_control WHERE tenant_id = '{{ $('Para cada tenant ativo').item.json.tenant_id }}' AND entity_name = 'vendedor')\n  ) AS last_cursor\n)\nSELECT\n  to_char(last_cursor AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM-DD\"T\"HH24:MI:SS') || '-0300' AS data_inicial,\n  to_char(now() AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM-DD\"T\"HH24:MI:SS') || '-0300' AS data_final\nFROM cursor_atual;\n",
+        "options": {}
+      },
+      "id": "c06433d8-86c2-4e75-884e-83724f685b88",
       "name": "Ler cursor - Vendedor",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
       "position": [
-        0,
-        200
+        2752,
+        1072
       ],
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "WITH boot AS (\n  INSERT INTO sync_control (entity_name, last_cursor)\n  VALUES ('vendedor', '2000-01-01T00:00:00-03:00')\n  ON CONFLICT (entity_name) DO NOTHING\n  RETURNING last_cursor\n),\ncursor_atual AS (\n  SELECT COALESCE(\n    (SELECT last_cursor FROM boot),\n    (SELECT last_cursor FROM sync_control WHERE entity_name = 'vendedor')\n  ) AS last_cursor\n)\nSELECT\n  to_char(last_cursor AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM-DD\"T\"HH24:MI:SS') || '-0300' AS data_inicial,\n  to_char(now() AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM-DD\"T\"HH24:MI:SS') || '-0300' AS data_final\nFROM cursor_atual;",
-        "options": {}
-      },
       "credentials": {
         "postgres": {
-          "name": "Supabase Postgres"
+          "id": "edefNEsD3808UU0h",
+          "name": "Postgres MultFarmapp"
         }
       }
     },
     {
-      "id": "vend-http",
+      "parameters": {
+        "url": "https://api-sgf-gateway.triersistemas.com.br/sgfpod1/rest/integracao/vendedor/obter-alterados-v1",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "primeiroRegistro",
+              "value": "0"
+            },
+            {
+              "name": "quantidadeRegistros",
+              "value": "999"
+            },
+            {
+              "name": "dataInicial",
+              "value": "={{ $json.data_inicial }}"
+            },
+            {
+              "name": "dataFinal",
+              "value": "={{ $json.data_final }}"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ $('Para cada tenant ativo').item.json.trier_config.token }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "d9d85f64-4542-4bb5-9609-c287bcd53075",
       "name": "Buscar vendedores (API)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        280,
-        200
+        3040,
+        1072
       ],
-      "parameters": {
-        "method": "GET",
-        "url": "https://api-sgf-gateway.triersistemas.com.br/sgfpod1/rest/integracao/vendedor/obter-alterados-v1",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
-        "sendQuery": true,
-        "queryParameters": {
-          "parameters": [
-            {
-              "name": "primeiroRegistro",
-              "value": "0"
-            },
-            {
-              "name": "quantidadeRegistros",
-              "value": "999"
-            },
-            {
-              "name": "dataInicial",
-              "value": "={{ $json.data_inicial }}"
-            },
-            {
-              "name": "dataFinal",
-              "value": "={{ $json.data_final }}"
-            }
-          ]
-        },
-        "options": {}
-      },
-      "credentials": {
-        "httpHeaderAuth": {
-          "name": "SGF Trier - Bearer"
-        }
-      }
+      "alwaysOutputData": true
     },
     {
-      "id": "vend-buscar",
+      "parameters": {
+        "jsCode": "// resposta da API pode chegar como 1 item cujo json E o array, ou ja\n// separada em N items (depende da versao do n8n) -- cobre os dois casos.\nconst TENANT_ID = $('Para cada tenant ativo').item.json.tenant_id;\n\nconst brutos = $input.all().map((i) => i.json).filter((o) => o && Object.keys(o).length > 0);\nconst linhas = brutos.length === 1 && Array.isArray(brutos[0]) ? brutos[0] : brutos;\nconst dataFinal = new Date().toISOString();\nconst QUANTIDADE = 999; // tem que bater com o 'quantidadeRegistros' do node HTTP Request\n\nfunction pgVal(v) {\n  if (v === null || v === undefined) return 'NULL';\n  if (typeof v === 'boolean') return v ? 'TRUE' : 'FALSE';\n  if (typeof v === 'number') return Number.isFinite(v) ? String(v) : 'NULL';\n  if (typeof v === 'object') return `'${JSON.stringify(v).replace(/'/g, \"''\")}'::jsonb`;\n  return `'${String(v).replace(/'/g, \"''\")}'`;\n}\n\nif (linhas.length >= QUANTIDADE) {\n  console.warn(`[vendedor] pagina cheia (${QUANTIDADE}) neste ciclo -- pode ter cortado registros.`);\n}\n\nlet sql = 'SELECT 1;';\nif (linhas.length > 0) {\n  const valores = linhas.map((v) =>\n    `(${pgVal(TENANT_ID)}, ${pgVal(v.codigo)}, ${pgVal(v.nome)}, ${pgVal(v.numeroCpf)}, ${pgVal(v.cep)}, ${pgVal(v.email)}, ${pgVal(v.ativo)}, now())`\n  ).join(',\\n');\n  sql = `INSERT INTO vendedores (tenant_id, codigo, nome, numero_cpf, cep, email, ativo, updated_at)\nVALUES ${valores}\nON CONFLICT (tenant_id, codigo) DO UPDATE SET\n  nome = EXCLUDED.nome,\n  numero_cpf = EXCLUDED.numero_cpf,\n  cep = EXCLUDED.cep,\n  email = EXCLUDED.email,\n  ativo = EXCLUDED.ativo,\n  updated_at = now();`;\n}\nsql += `\\nUPDATE sync_control SET last_cursor = '${dataFinal}', last_synced_at = now() WHERE tenant_id = '${TENANT_ID}' AND entity_name = 'vendedor';`;\n\nreturn [{ json: { sql, quantidade: linhas.length }, pairedItem: { item: 0 } }];"
+      },
+      "id": "f65f32e4-9933-4ef9-940d-a03146a9d24b",
       "name": "Mapear vendedores",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        560,
-        200
+        3312,
+        1072
       ],
-      "parameters": {
-        "language": "javaScript",
-        "jsCode": "// resposta da API pode chegar como 1 item cujo json E o array, ou ja\n// separada em N items (depende da versao do n8n) -- cobre os dois casos.\nconst brutos = $input.all().map((i) => i.json);\nconst linhas = brutos.length === 1 && Array.isArray(brutos[0]) ? brutos[0] : brutos;\nconst dataFinal = new Date().toISOString();\nconst QUANTIDADE = 999; // tem que bater com o 'quantidadeRegistros' do node HTTP Request\n\nfunction pgVal(v) {\n  if (v === null || v === undefined) return 'NULL';\n  if (typeof v === 'boolean') return v ? 'TRUE' : 'FALSE';\n  if (typeof v === 'number') return Number.isFinite(v) ? String(v) : 'NULL';\n  if (typeof v === 'object') return `'${JSON.stringify(v).replace(/'/g, \"''\")}'::jsonb`;\n  return `'${String(v).replace(/'/g, \"''\")}'`;\n}\n\nif (linhas.length >= QUANTIDADE) {\n  console.warn(`[vendedor] pagina cheia (${QUANTIDADE}) neste ciclo -- pode ter cortado registros.`);\n}\n\nlet sql = 'SELECT 1';\nif (linhas.length > 0) {\n  const valores = linhas.map((v) =>\n    `(${pgVal(v.codigo)}, ${pgVal(v.nome)}, ${pgVal(v.numeroCpf)}, ${pgVal(v.cep)}, ${pgVal(v.email)}, ${pgVal(v.ativo)}, now())`\n  ).join(',\\n');\n  sql = `INSERT INTO vendedores (codigo, nome, numero_cpf, cep, email, ativo, updated_at)\nVALUES ${valores}\nON CONFLICT (codigo) DO UPDATE SET\n  nome = EXCLUDED.nome,\n  numero_cpf = EXCLUDED.numero_cpf,\n  cep = EXCLUDED.cep,\n  email = EXCLUDED.email,\n  ativo = EXCLUDED.ativo,\n  updated_at = now();`;\n}\nsql += `\\nUPDATE sync_control SET last_cursor = '${dataFinal}', last_synced_at = now() WHERE entity_name = 'vendedor';`;\n\nreturn [{ json: { sql, quantidade: linhas.length } }];"
-      }
+      "alwaysOutputData": true
     },
     {
-      "id": "vend-executar",
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "{{ $json.sql }}",
+        "options": {}
+      },
+      "id": "54cd9a78-cb19-4fa6-a548-041751aebc1c",
       "name": "Executar - Vendedor",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
       "position": [
-        840,
-        200
+        3600,
+        1072
       ],
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "={{ $json.sql }}",
-        "options": {}
-      },
       "credentials": {
         "postgres": {
-          "name": "Supabase Postgres"
+          "id": "edefNEsD3808UU0h",
+          "name": "Postgres MultFarmapp"
         }
       }
     },
     {
-      "id": "cli-nota",
+      "parameters": {
+        "content": "### Cliente\nsync_control.entity_name = 'cliente' | tabela: clientes (PK codigo) | grupo/empresaConvenio vao direto pra jsonb",
+        "width": 1520
+      },
+      "id": "f9485d1f-0eb5-4e85-98ba-68ffdcbf5b52",
       "name": "Nota - Cliente",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
-        0,
-        320
-      ],
-      "parameters": {
-        "width": 1520,
-        "height": 160,
-        "content": "### Cliente\nsync_control.entity_name = 'cliente' | tabela: clientes (PK codigo) | grupo/empresaConvenio vao direto pra jsonb"
-      }
+        3008,
+        1216
+      ]
     },
     {
-      "id": "cli-cursor",
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH boot AS (\n  INSERT INTO sync_control (tenant_id, entity_name, last_cursor)\n  VALUES ('{{ $('Para cada tenant ativo').item.json.tenant_id }}', 'cliente', '2000-01-01T00:00:00-03:00')\n  ON CONFLICT (tenant_id, entity_name) DO NOTHING\n  RETURNING last_cursor\n),\ncursor_atual AS (\n  SELECT COALESCE(\n    (SELECT last_cursor FROM boot),\n    (SELECT last_cursor FROM sync_control WHERE tenant_id = '{{ $('Para cada tenant ativo').item.json.tenant_id }}' AND entity_name = 'cliente')\n  ) AS last_cursor\n)\nSELECT\n  to_char(last_cursor AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM-DD\"T\"HH24:MI:SS') || '-0300' AS data_inicial,\n  to_char(now() AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM-DD\"T\"HH24:MI:SS') || '-0300' AS data_final\nFROM cursor_atual;\n",
+        "options": {}
+      },
+      "id": "39d5339a-64d0-4792-bcda-174d83faedbc",
       "name": "Ler cursor - Cliente",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
       "position": [
-        0,
-        500
+        2912,
+        1776
       ],
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "WITH boot AS (\n  INSERT INTO sync_control (entity_name, last_cursor)\n  VALUES ('cliente', '2000-01-01T00:00:00-03:00')\n  ON CONFLICT (entity_name) DO NOTHING\n  RETURNING last_cursor\n),\ncursor_atual AS (\n  SELECT COALESCE(\n    (SELECT last_cursor FROM boot),\n    (SELECT last_cursor FROM sync_control WHERE entity_name = 'cliente')\n  ) AS last_cursor\n)\nSELECT\n  to_char(last_cursor AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM-DD\"T\"HH24:MI:SS') || '-0300' AS data_inicial,\n  to_char(now() AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM-DD\"T\"HH24:MI:SS') || '-0300' AS data_final\nFROM cursor_atual;",
-        "options": {}
-      },
       "credentials": {
         "postgres": {
-          "name": "Supabase Postgres"
+          "id": "edefNEsD3808UU0h",
+          "name": "Postgres MultFarmapp"
         }
       }
     },
     {
-      "id": "cli-http",
+      "parameters": {
+        "url": "https://api-sgf-gateway.triersistemas.com.br/sgfpod1/rest/integracao/cliente/obter-alterados-v1",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "primeiroRegistro",
+              "value": "0"
+            },
+            {
+              "name": "quantidadeRegistros",
+              "value": "999"
+            },
+            {
+              "name": "dataInicial",
+              "value": "={{ $json.data_inicial }}"
+            },
+            {
+              "name": "dataFinal",
+              "value": "={{ $json.data_final }}"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ $('Para cada tenant ativo').item.json.trier_config.token }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "f1381eb5-dc4f-4f72-bb9b-140dcc310339",
       "name": "Buscar clientes (API)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        280,
-        500
+        3232,
+        1776
       ],
-      "parameters": {
-        "method": "GET",
-        "url": "https://api-sgf-gateway.triersistemas.com.br/sgfpod1/rest/integracao/cliente/obter-alterados-v1",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
-        "sendQuery": true,
-        "queryParameters": {
-          "parameters": [
-            {
-              "name": "primeiroRegistro",
-              "value": "0"
-            },
-            {
-              "name": "quantidadeRegistros",
-              "value": "999"
-            },
-            {
-              "name": "dataInicial",
-              "value": "={{ $json.data_inicial }}"
-            },
-            {
-              "name": "dataFinal",
-              "value": "={{ $json.data_final }}"
-            }
-          ]
-        },
-        "options": {}
-      },
-      "credentials": {
-        "httpHeaderAuth": {
-          "name": "SGF Trier - Bearer"
-        }
-      }
+      "alwaysOutputData": true
     },
     {
-      "id": "cli-buscar",
+      "parameters": {
+        "jsCode": "const TENANT_ID = $('Para cada tenant ativo').item.json.tenant_id;\n\nconst brutos = $input.all().map((i) => i.json).filter((o) => o && Object.keys(o).length > 0);\nconst linhas = brutos.length === 1 && Array.isArray(brutos[0]) ? brutos[0] : brutos;\nconst dataFinal = new Date().toISOString();\nconst QUANTIDADE = 999;\n\nfunction pgVal(v) {\n  if (v === null || v === undefined) return 'NULL';\n  if (typeof v === 'boolean') return v ? 'TRUE' : 'FALSE';\n  if (typeof v === 'number') return Number.isFinite(v) ? String(v) : 'NULL';\n  if (typeof v === 'object') return `'${JSON.stringify(v).replace(/'/g, \"''\")}'::jsonb`;\n  return `'${String(v).replace(/'/g, \"''\")}'`;\n}\n\nif (linhas.length >= QUANTIDADE) {\n  console.warn(`[cliente] pagina cheia (${QUANTIDADE}) neste ciclo -- pode ter cortado registros.`);\n}\n\nlet sql = 'SELECT 1;';\nif (linhas.length > 0) {\n  const valores = linhas.map((c) =>\n    `(${pgVal(TENANT_ID)}, ${pgVal(c.codigo)}, ${pgVal(c.nome)}, ${pgVal(c.numeroCpfCnpj)}, ${pgVal(c.codigoCidade)}, ${pgVal(c.email)}, ${pgVal(c.cep)}, ${pgVal(c.estado)}, ${pgVal(c.fone)}, ${pgVal(c.bairro)}, ${pgVal(c.logradouro)}, ${pgVal(c.numeroEndereco)}, ${pgVal(c.ativo)}, ${pgVal(c.dataNascimento ?? null)}, ${pgVal(c.grupo ?? null)}, ${pgVal(c.empresaConvenio ?? null)}, now())`\n  ).join(',\\n');\n  sql = `INSERT INTO clientes (tenant_id, codigo, nome, numero_cpf_cnpj, codigo_cidade, email, cep, estado, fone, bairro, logradouro, numero_endereco, ativo, data_nascimento, grupo, empresa_convenio, updated_at)\nVALUES ${valores}\nON CONFLICT (tenant_id, codigo) DO UPDATE SET\n  nome = EXCLUDED.nome,\n  numero_cpf_cnpj = EXCLUDED.numero_cpf_cnpj,\n  codigo_cidade = EXCLUDED.codigo_cidade,\n  email = EXCLUDED.email,\n  cep = EXCLUDED.cep,\n  estado = EXCLUDED.estado,\n  fone = EXCLUDED.fone,\n  bairro = EXCLUDED.bairro,\n  logradouro = EXCLUDED.logradouro,\n  numero_endereco = EXCLUDED.numero_endereco,\n  ativo = EXCLUDED.ativo,\n  data_nascimento = EXCLUDED.data_nascimento,\n  grupo = EXCLUDED.grupo,\n  empresa_convenio = EXCLUDED.empresa_convenio,\n  updated_at = now();`;\n}\nsql += `\\nUPDATE sync_control SET last_cursor = '${dataFinal}', last_synced_at = now() WHERE tenant_id = '${TENANT_ID}' AND entity_name = 'cliente';`;\n\nreturn [{ json: { sql, quantidade: linhas.length }, pairedItem: { item: 0 } }];"
+      },
+      "id": "8f4a1763-3d7f-4802-8b82-738d09f36ae9",
       "name": "Mapear clientes",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        560,
-        500
+        3504,
+        1776
       ],
-      "parameters": {
-        "language": "javaScript",
-        "jsCode": "const brutos = $input.all().map((i) => i.json);\nconst linhas = brutos.length === 1 && Array.isArray(brutos[0]) ? brutos[0] : brutos;\nconst dataFinal = new Date().toISOString();\nconst QUANTIDADE = 999;\n\nfunction pgVal(v) {\n  if (v === null || v === undefined) return 'NULL';\n  if (typeof v === 'boolean') return v ? 'TRUE' : 'FALSE';\n  if (typeof v === 'number') return Number.isFinite(v) ? String(v) : 'NULL';\n  if (typeof v === 'object') return `'${JSON.stringify(v).replace(/'/g, \"''\")}'::jsonb`;\n  return `'${String(v).replace(/'/g, \"''\")}'`;\n}\n\nif (linhas.length >= QUANTIDADE) {\n  console.warn(`[cliente] pagina cheia (${QUANTIDADE}) neste ciclo -- pode ter cortado registros.`);\n}\n\nlet sql = 'SELECT 1';\nif (linhas.length > 0) {\n  const valores = linhas.map((c) =>\n    `(${pgVal(c.codigo)}, ${pgVal(c.nome)}, ${pgVal(c.numeroCpfCnpj)}, ${pgVal(c.codigoCidade)}, ${pgVal(c.email)}, ${pgVal(c.cep)}, ${pgVal(c.estado)}, ${pgVal(c.fone)}, ${pgVal(c.bairro)}, ${pgVal(c.logradouro)}, ${pgVal(c.numeroEndereco)}, ${pgVal(c.ativo)}, ${pgVal(c.dataNascimento ?? null)}, ${pgVal(c.grupo ?? null)}, ${pgVal(c.empresaConvenio ?? null)}, now())`\n  ).join(',\\n');\n  sql = `INSERT INTO clientes (codigo, nome, numero_cpf_cnpj, codigo_cidade, email, cep, estado, fone, bairro, logradouro, numero_endereco, ativo, data_nascimento, grupo, empresa_convenio, updated_at)\nVALUES ${valores}\nON CONFLICT (codigo) DO UPDATE SET\n  nome = EXCLUDED.nome,\n  numero_cpf_cnpj = EXCLUDED.numero_cpf_cnpj,\n  codigo_cidade = EXCLUDED.codigo_cidade,\n  email = EXCLUDED.email,\n  cep = EXCLUDED.cep,\n  estado = EXCLUDED.estado,\n  fone = EXCLUDED.fone,\n  bairro = EXCLUDED.bairro,\n  logradouro = EXCLUDED.logradouro,\n  numero_endereco = EXCLUDED.numero_endereco,\n  ativo = EXCLUDED.ativo,\n  data_nascimento = EXCLUDED.data_nascimento,\n  grupo = EXCLUDED.grupo,\n  empresa_convenio = EXCLUDED.empresa_convenio,\n  updated_at = now();`;\n}\nsql += `\\nUPDATE sync_control SET last_cursor = '${dataFinal}', last_synced_at = now() WHERE entity_name = 'cliente';`;\n\nreturn [{ json: { sql, quantidade: linhas.length } }];"
-      }
+      "alwaysOutputData": true
     },
     {
-      "id": "cli-executar",
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "{{ $json.sql }}",
+        "options": {}
+      },
+      "id": "0c05109e-d59a-4cc6-ae1d-7ba598ce33d2",
       "name": "Executar - Cliente",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
       "position": [
-        840,
-        500
+        3776,
+        1776
       ],
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "={{ $json.sql }}",
-        "options": {}
-      },
       "credentials": {
         "postgres": {
-          "name": "Supabase Postgres"
+          "id": "edefNEsD3808UU0h",
+          "name": "Postgres MultFarmapp"
         }
       }
     },
     {
-      "id": "atd-nota",
+      "parameters": {
+        "content": "### Atendimentos diarios por vendedor\nsync_control.entity_name = 'atendimentos_vendedor' | tabela: vendas_vendedor_diario (PK data_emissao+codigo_vendedor)",
+        "width": 1520
+      },
+      "id": "dd94ed29-f627-4a72-ae9c-04de1a17f36c",
       "name": "Nota - Atendimentos",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
-        0,
-        620
-      ],
-      "parameters": {
-        "width": 1520,
-        "height": 160,
-        "content": "### Atendimentos diarios por vendedor\nsync_control.entity_name = 'atendimentos_vendedor' | tabela: vendas_vendedor_diario (PK data_emissao+codigo_vendedor)"
-      }
+        2928,
+        1920
+      ]
     },
     {
-      "id": "atd-cursor",
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH boot AS (\n  INSERT INTO sync_control (tenant_id, entity_name, last_cursor)\n  VALUES ('{{ $('Para cada tenant ativo').item.json.tenant_id }}', 'cliente', '2000-01-01T00:00:00-03:00')\n  ON CONFLICT (tenant_id, entity_name) DO NOTHING\n  RETURNING last_cursor\n),\ncursor_atual AS (\n  SELECT COALESCE(\n    (SELECT last_cursor FROM boot),\n    (SELECT last_cursor FROM sync_control WHERE tenant_id = '{{ $('Para cada tenant ativo').item.json.tenant_id }}' AND entity_name = 'cliente')\n  ) AS last_cursor\n)\nSELECT\n  to_char(last_cursor AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM-DD\"T\"HH24:MI:SS') || '-0300' AS data_inicial,\n  to_char(now() AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM-DD\"T\"HH24:MI:SS') || '-0300' AS data_final\nFROM cursor_atual;\n",
+        "options": {}
+      },
+      "id": "916c83fe-34ff-42d8-821d-c6f9df6f3031",
       "name": "Ler cursor - Atendimentos",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
       "position": [
-        0,
-        800
+        2928,
+        2096
       ],
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "WITH boot AS (\n  INSERT INTO sync_control (entity_name, last_cursor)\n  VALUES ('atendimentos_vendedor', '2000-01-01T00:00:00-03:00')\n  ON CONFLICT (entity_name) DO NOTHING\n  RETURNING last_cursor\n),\ncursor_atual AS (\n  SELECT COALESCE(\n    (SELECT last_cursor FROM boot),\n    (SELECT last_cursor FROM sync_control WHERE entity_name = 'atendimentos_vendedor')\n  ) AS last_cursor\n)\nSELECT\n  to_char(last_cursor AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM-DD\"T\"HH24:MI:SS') || '-0300' AS data_inicial,\n  to_char(now() AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM-DD\"T\"HH24:MI:SS') || '-0300' AS data_final\nFROM cursor_atual;",
-        "options": {}
-      },
       "credentials": {
         "postgres": {
-          "name": "Supabase Postgres"
+          "id": "edefNEsD3808UU0h",
+          "name": "Postgres MultFarmapp"
         }
       }
     },
     {
-      "id": "atd-http",
+      "parameters": {
+        "url": "https://api-sgf-gateway.triersistemas.com.br/sgfpod1/rest/integracao/venda/obter-atendimentos-diario-vendedor-v1",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "primeiroRegistro",
+              "value": "0"
+            },
+            {
+              "name": "quantidadeRegistros",
+              "value": "999"
+            },
+            {
+              "name": "dataInicial",
+              "value": "={{ $json.data_inicial }}"
+            },
+            {
+              "name": "dataFinal",
+              "value": "={{ $json.data_final }}"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ $('Para cada tenant ativo').item.json.trier_config.token }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "1690a24d-2133-4748-bf87-cf310bbf8ece",
       "name": "Buscar atendimentos (API)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        280,
-        800
+        3216,
+        2096
       ],
-      "parameters": {
-        "method": "GET",
-        "url": "https://api-sgf-gateway.triersistemas.com.br/sgfpod1/rest/integracao/venda/obter-atendimentos-diario-vendedor-v1",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
-        "sendQuery": true,
-        "queryParameters": {
-          "parameters": [
-            {
-              "name": "primeiroRegistro",
-              "value": "0"
-            },
-            {
-              "name": "quantidadeRegistros",
-              "value": "999"
-            },
-            {
-              "name": "dataInicial",
-              "value": "={{ $json.data_inicial }}"
-            },
-            {
-              "name": "dataFinal",
-              "value": "={{ $json.data_final }}"
-            }
-          ]
-        },
-        "options": {}
-      },
-      "credentials": {
-        "httpHeaderAuth": {
-          "name": "SGF Trier - Bearer"
-        }
-      }
+      "alwaysOutputData": true
     },
     {
-      "id": "atd-buscar",
+      "parameters": {
+        "jsCode": "const TENANT_ID = $('Para cada tenant ativo').item.json.tenant_id;\n\nconst brutos = $input.all().map((i) => i.json).filter((o) => o && Object.keys(o).length > 0);\nconst linhas = brutos.length === 1 && Array.isArray(brutos[0]) ? brutos[0] : brutos;\nconst dataFinal = new Date().toISOString();\nconst QUANTIDADE = 999;\n\nfunction pgVal(v) {\n  if (v === null || v === undefined) return 'NULL';\n  if (typeof v === 'boolean') return v ? 'TRUE' : 'FALSE';\n  if (typeof v === 'number') return Number.isFinite(v) ? String(v) : 'NULL';\n  if (typeof v === 'object') return `'${JSON.stringify(v).replace(/'/g, \"''\")}'::jsonb`;\n  return `'${String(v).replace(/'/g, \"''\")}'`;\n}\n\nif (linhas.length >= QUANTIDADE) {\n  console.warn(`[atendimentos] pagina cheia (${QUANTIDADE}) neste ciclo -- pode ter cortado registros.`);\n}\n\nlet sql = 'SELECT 1;';\nif (linhas.length > 0) {\n  const valores = linhas.map((a) =>\n    `(${pgVal(TENANT_ID)}, ${pgVal(String(a.dataEmissao).slice(0, 10))}, ${pgVal(a.codigoVendedor)}, ${pgVal(a.quantidadeItens)}, ${pgVal(a.quantidadeAtendimentos)})`\n  ).join(',\\n');\n  sql = `INSERT INTO vendas_vendedor_diario (tenant_id, data_emissao, codigo_vendedor, quantidade_itens, quantidade_atendimentos)\nVALUES ${valores}\nON CONFLICT (tenant_id, data_emissao, codigo_vendedor) DO UPDATE SET\n  quantidade_itens = EXCLUDED.quantidade_itens,\n  quantidade_atendimentos = EXCLUDED.quantidade_atendimentos;`;\n}\nsql += `\\nUPDATE sync_control SET last_cursor = '${dataFinal}', last_synced_at = now() WHERE tenant_id = '${TENANT_ID}' AND entity_name = 'atendimentos_vendedor';`;\n\nreturn [{ json: { sql, quantidade: linhas.length }, pairedItem: { item: 0 } }];"
+      },
+      "id": "04e73785-e2c9-4b14-93ae-7befbf40a76c",
       "name": "Mapear atendimentos",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        560,
-        800
+        3488,
+        2096
       ],
-      "parameters": {
-        "language": "javaScript",
-        "jsCode": "const brutos = $input.all().map((i) => i.json);\nconst linhas = brutos.length === 1 && Array.isArray(brutos[0]) ? brutos[0] : brutos;\nconst dataFinal = new Date().toISOString();\nconst QUANTIDADE = 999;\n\nfunction pgVal(v) {\n  if (v === null || v === undefined) return 'NULL';\n  if (typeof v === 'boolean') return v ? 'TRUE' : 'FALSE';\n  if (typeof v === 'number') return Number.isFinite(v) ? String(v) : 'NULL';\n  if (typeof v === 'object') return `'${JSON.stringify(v).replace(/'/g, \"''\")}'::jsonb`;\n  return `'${String(v).replace(/'/g, \"''\")}'`;\n}\n\nif (linhas.length >= QUANTIDADE) {\n  console.warn(`[atendimentos] pagina cheia (${QUANTIDADE}) neste ciclo -- pode ter cortado registros.`);\n}\n\nlet sql = 'SELECT 1';\nif (linhas.length > 0) {\n  const valores = linhas.map((a) =>\n    `(${pgVal(String(a.dataEmissao).slice(0, 10))}, ${pgVal(a.codigoVendedor)}, ${pgVal(a.quantidadeItens)}, ${pgVal(a.quantidadeAtendimentos)})`\n  ).join(',\\n');\n  sql = `INSERT INTO vendas_vendedor_diario (data_emissao, codigo_vendedor, quantidade_itens, quantidade_atendimentos)\nVALUES ${valores}\nON CONFLICT (data_emissao, codigo_vendedor) DO UPDATE SET\n  quantidade_itens = EXCLUDED.quantidade_itens,\n  quantidade_atendimentos = EXCLUDED.quantidade_atendimentos;`;\n}\nsql += `\\nUPDATE sync_control SET last_cursor = '${dataFinal}', last_synced_at = now() WHERE entity_name = 'atendimentos_vendedor';`;\n\nreturn [{ json: { sql, quantidade: linhas.length } }];"
-      }
+      "alwaysOutputData": true
     },
     {
-      "id": "atd-executar",
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "{{ $json.sql }}",
+        "options": {}
+      },
+      "id": "323b3472-fba9-4252-8dcc-b919d349ce51",
       "name": "Executar - Atendimentos",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
       "position": [
-        840,
-        800
+        3776,
+        2096
       ],
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "={{ $json.sql }}",
-        "options": {}
-      },
       "credentials": {
         "postgres": {
-          "name": "Supabase Postgres"
+          "id": "edefNEsD3808UU0h",
+          "name": "Postgres MultFarmapp"
         }
       }
     },
     {
-      "id": "ven-nota",
+      "parameters": {
+        "content": "### Venda + itens (a mais complexa)\nsync_control.entity_name = 'venda' | tabelas: vendas (upsert por numero_nota+cod_filial+ser_nota_fiscal, RETURNING id) e venda_itens (upsert por venda_id+num_sequencial -- precisa da migracao_coletor.sql).\n\nvendaComDesconto vem NUMBER da API mas a coluna e BOOLEAN -- mapeamento provisorio no Code node 'Preparar itens', ver nota no topo do workflow e migracao_coletor.sql.",
+        "height": 200,
+        "width": 1800
+      },
+      "id": "d0c98d2d-bae0-4e0b-b88b-06d78bb10d14",
       "name": "Nota - Venda",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
-        0,
-        940
-      ],
-      "parameters": {
-        "width": 1800,
-        "height": 200,
-        "content": "### Venda + itens (a mais complexa)\nsync_control.entity_name = 'venda' | tabelas: vendas (upsert por numero_nota+cod_filial+ser_nota_fiscal, RETURNING id) e venda_itens (upsert por venda_id+num_sequencial -- precisa da migracao_coletor.sql).\n\nvendaComDesconto vem NUMBER da API mas a coluna e BOOLEAN -- mapeamento provisorio no Code node 'Preparar itens', ver nota no topo do workflow e migracao_coletor.sql."
-      }
+        2896,
+        2272
+      ]
     },
     {
-      "id": "ven-cursor",
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH boot AS (\n  INSERT INTO sync_control (tenant_id, entity_name, last_cursor)\n  VALUES ('{{ $('Para cada tenant ativo').item.json.tenant_id }}', 'cliente', '2000-01-01T00:00:00-03:00')\n  ON CONFLICT (tenant_id, entity_name) DO NOTHING\n  RETURNING last_cursor\n),\ncursor_atual AS (\n  SELECT COALESCE(\n    (SELECT last_cursor FROM boot),\n    (SELECT last_cursor FROM sync_control WHERE tenant_id = '{{ $('Para cada tenant ativo').item.json.tenant_id }}' AND entity_name = 'cliente')\n  ) AS last_cursor\n)\nSELECT\n  to_char(last_cursor AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM-DD\"T\"HH24:MI:SS') || '-0300' AS data_inicial,\n  to_char(now() AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM-DD\"T\"HH24:MI:SS') || '-0300' AS data_final\nFROM cursor_atual;\n",
+        "options": {}
+      },
+      "id": "3dfad921-ee64-4d9c-b8c5-f53f013b0128",
       "name": "Ler cursor - Venda",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
       "position": [
-        0,
-        1160
+        2928,
+        2544
       ],
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "WITH boot AS (\n  INSERT INTO sync_control (entity_name, last_cursor)\n  VALUES ('venda', '2000-01-01T00:00:00-03:00')\n  ON CONFLICT (entity_name) DO NOTHING\n  RETURNING last_cursor\n),\ncursor_atual AS (\n  SELECT COALESCE(\n    (SELECT last_cursor FROM boot),\n    (SELECT last_cursor FROM sync_control WHERE entity_name = 'venda')\n  ) AS last_cursor\n)\nSELECT\n  to_char(last_cursor AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM-DD\"T\"HH24:MI:SS') || '-0300' AS data_inicial,\n  to_char(now() AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM-DD\"T\"HH24:MI:SS') || '-0300' AS data_final\nFROM cursor_atual;",
-        "options": {}
-      },
       "credentials": {
         "postgres": {
-          "name": "Supabase Postgres"
+          "id": "edefNEsD3808UU0h",
+          "name": "Postgres MultFarmapp"
         }
       }
     },
     {
-      "id": "ven-http",
+      "parameters": {
+        "url": "https://api-sgf-gateway.triersistemas.com.br/sgfpod1/rest/integracao/venda/obter-alterados-v1",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "primeiroRegistro",
+              "value": "0"
+            },
+            {
+              "name": "quantidadeRegistros",
+              "value": "999"
+            },
+            {
+              "name": "dataInicial",
+              "value": "={{ $json.data_inicial }}"
+            },
+            {
+              "name": "dataFinal",
+              "value": "={{ $json.data_final }}"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ $('Para cada tenant ativo').item.json.trier_config.token }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "088155fa-dd94-4152-8c27-4f2cbd995b33",
       "name": "Buscar vendas (API)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        280,
-        1160
+        3216,
+        2544
       ],
-      "parameters": {
-        "method": "GET",
-        "url": "https://api-sgf-gateway.triersistemas.com.br/sgfpod1/rest/integracao/venda/obter-alterados-v1",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
-        "sendQuery": true,
-        "queryParameters": {
-          "parameters": [
-            {
-              "name": "primeiroRegistro",
-              "value": "0"
-            },
-            {
-              "name": "quantidadeRegistros",
-              "value": "999"
-            },
-            {
-              "name": "dataInicial",
-              "value": "={{ $json.data_inicial }}"
-            },
-            {
-              "name": "dataFinal",
-              "value": "={{ $json.data_final }}"
-            }
-          ]
-        },
-        "options": {}
-      },
-      "credentials": {
-        "httpHeaderAuth": {
-          "name": "SGF Trier - Bearer"
-        }
-      }
+      "alwaysOutputData": true
     },
     {
-      "id": "ven-buscar",
+      "parameters": {
+        "jsCode": "// resposta da API pode chegar como 1 item cujo json E o array, ou ja\n// separada em N items (depende da versao do n8n) -- cobre os dois casos.\nconst TENANT_ID = $('Para cada tenant ativo').item.json.tenant_id;\n\nconst brutos = $input.all().map((i) => i.json).filter((o) => o && Object.keys(o).length > 0);\nconst vendas = brutos.length === 1 && Array.isArray(brutos[0]) ? brutos[0] : brutos;\nconst dataFinal = new Date().toISOString();\nconst QUANTIDADE = 999; // tem que bater com o 'quantidadeRegistros' do node HTTP Request\n\nfunction pgVal(v) {\n  if (v === null || v === undefined) return 'NULL';\n  if (typeof v === 'boolean') return v ? 'TRUE' : 'FALSE';\n  if (typeof v === 'number') return Number.isFinite(v) ? String(v) : 'NULL';\n  if (typeof v === 'object') return `'${JSON.stringify(v).replace(/'/g, \"''\")}'::jsonb`;\n  return `'${String(v).replace(/'/g, \"''\")}'`;\n}\n\n// horaEmissao vem como \"HH:MM:SS-0300\" (hora + fuso, sem data, sem\n// \"T\") -- formato descoberto 02/08/2026 inspecionando a API crua, nao\n// documentado. Extrai so o prefixo HH:MM(:SS), ignorando o que vier\n// depois (fuso, milissegundos, \"Z\" etc.) -- funciona tanto pra esse\n// formato quanto pra um datetime ISO completo (usa o que vier depois\n// do \"T\", se tiver).\nfunction horaParaPg(bruto) {\n  if (bruto === null || bruto === undefined || bruto === '') return null;\n  const s = String(bruto);\n  const idxT = s.indexOf('T');\n  const alvo = idxT >= 0 ? s.slice(idxT + 1) : s;\n  const match = alvo.match(/^(\\d{2}):(\\d{2})(?::(\\d{2}))?/);\n  if (match) return `${match[1]}:${match[2]}:${match[3] ?? '00'}`;\n  if (/^\\d{1,2}$/.test(s)) return s.padStart(2, '0') + ':00:00';\n  return null;\n}\n\nif (vendas.length >= QUANTIDADE) {\n  console.warn(`[venda] pagina cheia (${QUANTIDADE}) neste ciclo -- pode ter cortado registros.`);\n}\n\nfunction linhaVenda(v) {\n  const dataEmissao = v.dataEmissao ? String(v.dataEmissao).slice(0, 10) : null;\n  const horaEmissao = horaParaPg(v.horaEmissao);\n  // API manda \"S\"/null pra venda de ecommerce; a coluna e boolean.\n  const vendaEcommerce = v.vendaEcommerce === 'S';\n  return `(${pgVal(TENANT_ID)}, ${pgVal(v.numeroNota)}, ${pgVal(dataEmissao)}, ${pgVal(horaEmissao)}, ${pgVal(v.codigoVendedor)}, ${pgVal(v.codigoCliente)}, ${pgVal(v.entrega)}, ${pgVal(v.pagamentoNaEntrega)}, ${pgVal(v.condicaoPagamento ?? null)}, ${pgVal(v.vlrTroco)}, ${pgVal(v.numeroCupomFiscal)}, ${pgVal(v.numeroNotaFiscal)}, ${pgVal(v.xmlNfe)}, ${pgVal(v.codParceiro)}, ${pgVal(v.codFilial)}, ${pgVal(v.vendaIfood)}, ${pgVal(vendaEcommerce)}, ${pgVal(v.codEcommerce)}, ${pgVal(v.serNotaFiscal)}, ${pgVal(v.modeloVenda)}, ${pgVal(v.dadosEntrega ?? null)}, now())`;\n}\n\n// numero_nota_origem e tipo_cancelamento ficam FORA de propósito\n// (26/08/2026): /venda/obter-alterados-v1 nunca traz esses campos\n// preenchidos, entao incluir eles aqui sobrescrevia de volta pra NULL\n// toda vez que uma venda ja marcada cancelada/devolvida fosse\n// reprocessada por qualquer motivo -- achado com dado real (um\n// backfill derrubou 347 devolucoes marcadas pra 327). Esses 2 campos\n// sao exclusivos dos fluxos de Cancelamento/Devolucao abaixo, que\n// fazem UPDATE isolado, sem tocar o resto da linha.\nconst COLUNAS_VENDA = 'tenant_id, numero_nota, data_emissao, hora_emissao, codigo_vendedor, codigo_cliente, entrega, pagamento_na_entrega, condicao_pagamento, vlr_troco, numero_cupom_fiscal, numero_nota_fiscal, xml_nfe, cod_parceiro, cod_filial, venda_ifood, venda_ecommerce, cod_ecommerce, ser_nota_fiscal, modelo_venda, dados_entrega, updated_at';\nconst UPDATE_SET_VENDA = `data_emissao = EXCLUDED.data_emissao,\n  hora_emissao = EXCLUDED.hora_emissao,\n  codigo_vendedor = EXCLUDED.codigo_vendedor,\n  codigo_cliente = EXCLUDED.codigo_cliente,\n  entrega = EXCLUDED.entrega,\n  pagamento_na_entrega = EXCLUDED.pagamento_na_entrega,\n  condicao_pagamento = EXCLUDED.condicao_pagamento,\n  vlr_troco = EXCLUDED.vlr_troco,\n  numero_cupom_fiscal = EXCLUDED.numero_cupom_fiscal,\n  numero_nota_fiscal = EXCLUDED.numero_nota_fiscal,\n  xml_nfe = EXCLUDED.xml_nfe,\n  cod_parceiro = EXCLUDED.cod_parceiro,\n  venda_ifood = EXCLUDED.venda_ifood,\n  venda_ecommerce = EXCLUDED.venda_ecommerce,\n  cod_ecommerce = EXCLUDED.cod_ecommerce,\n  modelo_venda = EXCLUDED.modelo_venda,\n  dados_entrega = EXCLUDED.dados_entrega,\n  updated_at = now()`;\n\n// sem vendas: WHERE FALSE garante RETURNING vazio (0 items pro proximo node),\n// em vez de dar erro de sintaxe com VALUES vazio.\nlet sql = 'SELECT NULL::bigint AS id, NULL::int AS numero_nota, NULL::int AS cod_filial, NULL::text AS ser_nota_fiscal WHERE FALSE';\n\nif (vendas.length > 0) {\n  // ser_nota_fiscal nula precisa de um ON CONFLICT diferente --\n  // (numero_nota, cod_filial, ser_nota_fiscal) nunca \"bate\" quando a\n  // serie e NULL (Postgres trata cada NULL como distinto de si mesmo),\n  // entao cada reprocessamento duplicava a venda inteira em vez de\n  // atualizar. Precisa do indice parcial (numero_nota, cod_filial)\n  // where ser_nota_fiscal is null -- ver coletor/migracao_coletor.sql.\n  const comSerie = vendas.filter((v) => v.serNotaFiscal != null);\n  const semSerie = vendas.filter((v) => v.serNotaFiscal == null);\n\n  const codigosClientes = [...new Set(vendas.map((v) => v.codigoCliente).filter((c) => c != null))];\n  const codigosVendedores = [...new Set(vendas.map((v) => v.codigoVendedor).filter((c) => c != null))];\n  let stubsSql = '';\n  if (codigosClientes.length > 0) {\n    stubsSql += `INSERT INTO clientes (tenant_id, codigo) VALUES ${codigosClientes.map((c) => `(${pgVal(TENANT_ID)}, ${pgVal(c)})`).join(',\\n')} ON CONFLICT (tenant_id, codigo) DO NOTHING;\\n`;\n  }\n  if (codigosVendedores.length > 0) {\n    stubsSql += `INSERT INTO vendedores (tenant_id, codigo, nome) VALUES ${codigosVendedores.map((c) => `(${pgVal(TENANT_ID)}, ${pgVal(c)}, '(pendente sincronizacao)')`).join(',\\n')} ON CONFLICT (tenant_id, codigo) DO NOTHING;\\n`;\n  }\n\n  let insertsSql = '';\n  if (comSerie.length > 0) {\n    insertsSql += `INSERT INTO vendas (${COLUNAS_VENDA})\nVALUES ${comSerie.map(linhaVenda).join(',\\n')}\nON CONFLICT (tenant_id, numero_nota, cod_filial, ser_nota_fiscal) DO UPDATE SET\n  ${UPDATE_SET_VENDA}\nRETURNING id, numero_nota, cod_filial, ser_nota_fiscal;\\n`;\n  }\n  if (semSerie.length > 0) {\n    insertsSql += `INSERT INTO vendas (${COLUNAS_VENDA})\nVALUES ${semSerie.map(linhaVenda).join(',\\n')}\nON CONFLICT (tenant_id, numero_nota, cod_filial) WHERE ser_nota_fiscal IS NULL DO UPDATE SET\n  ${UPDATE_SET_VENDA}\nRETURNING id, numero_nota, cod_filial, ser_nota_fiscal;\\n`;\n  }\n\n  sql = stubsSql + insertsSql;\n}\n\nconst vendasComItens = vendas.map((v) => ({\n  numeroNota: v.numeroNota,\n  codFilial: v.codFilial,\n  serNotaFiscal: v.serNotaFiscal,\n  itens: v.itens || [],\n}));\n\n// Grava no static data global do workflow em vez de depender de\n// referencia cruzada $('Mapear vendas') ou de um node Merge -- os dois\n// se mostraram instaveis dentro do Loop Over Items (bug conhecido do\n// n8n). Static data eh lido direto por 'Preparar itens e cursor' logo\n// a seguir, sem depender de pareamento de item nenhum.\nconst staticData = $getWorkflowStaticData('global');\nstaticData.vendasComItens = vendasComItens;\nstaticData.cursorNovo = dataFinal;\n\nreturn [{ json: { sql, vendasComItens, cursorNovo: dataFinal }, pairedItem: { item: 0 } }];"
+      },
+      "id": "2a0aed86-b1dd-4460-a1b6-c8caa8ce627a",
       "name": "Mapear vendas",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        560,
-        1160
+        3488,
+        2544
       ],
-      "parameters": {
-        "language": "javaScript",
-        "jsCode": "// resposta da API pode chegar como 1 item cujo json E o array, ou ja\n// separada em N items (depende da versao do n8n) -- cobre os dois casos.\nconst brutos = $input.all().map((i) => i.json);\nconst vendas = brutos.length === 1 && Array.isArray(brutos[0]) ? brutos[0] : brutos;\nconst dataFinal = new Date().toISOString();\nconst QUANTIDADE = 999; // tem que bater com o 'quantidadeRegistros' do node HTTP Request\n\nfunction pgVal(v) {\n  if (v === null || v === undefined) return 'NULL';\n  if (typeof v === 'boolean') return v ? 'TRUE' : 'FALSE';\n  if (typeof v === 'number') return Number.isFinite(v) ? String(v) : 'NULL';\n  if (typeof v === 'object') return `'${JSON.stringify(v).replace(/'/g, \"''\")}'::jsonb`;\n  return `'${String(v).replace(/'/g, \"''\")}'`;\n}\n\n// horaEmissao vem como \"HH:MM:SS-0300\" (hora + fuso, sem data, sem\n// \"T\") -- formato descoberto 02/08/2026 inspecionando a API crua, nao\n// documentado. Extrai so o prefixo HH:MM(:SS), ignorando o que vier\n// depois (fuso, milissegundos, \"Z\" etc.) -- funciona tanto pra esse\n// formato quanto pra um datetime ISO completo (usa o que vier depois\n// do \"T\", se tiver).\nfunction horaParaPg(bruto) {\n  if (bruto === null || bruto === undefined || bruto === '') return null;\n  const s = String(bruto);\n  const idxT = s.indexOf('T');\n  const alvo = idxT >= 0 ? s.slice(idxT + 1) : s;\n  const match = alvo.match(/^(\\d{2}):(\\d{2})(?::(\\d{2}))?/);\n  if (match) return `${match[1]}:${match[2]}:${match[3] ?? '00'}`;\n  if (/^\\d{1,2}$/.test(s)) return s.padStart(2, '0') + ':00:00';\n  return null;\n}\n\nif (vendas.length >= QUANTIDADE) {\n  console.warn(`[venda] pagina cheia (${QUANTIDADE}) neste ciclo -- pode ter cortado registros.`);\n}\n\nfunction linhaVenda(v) {\n  const dataEmissao = v.dataEmissao ? String(v.dataEmissao).slice(0, 10) : null;\n  const horaEmissao = horaParaPg(v.horaEmissao);\n  // API manda \"S\"/null pra venda de ecommerce; a coluna e boolean.\n  const vendaEcommerce = v.vendaEcommerce === 'S';\n  return `(${pgVal(v.numeroNota)}, ${pgVal(dataEmissao)}, ${pgVal(horaEmissao)}, ${pgVal(v.codigoVendedor)}, ${pgVal(v.codigoCliente)}, ${pgVal(v.entrega)}, ${pgVal(v.pagamentoNaEntrega)}, ${pgVal(v.condicaoPagamento ?? null)}, ${pgVal(v.vlrTroco)}, ${pgVal(v.numeroCupomFiscal)}, ${pgVal(v.numeroNotaFiscal)}, ${pgVal(v.xmlNfe)}, ${pgVal(v.codParceiro)}, ${pgVal(v.codFilial)}, ${pgVal(v.vendaIfood)}, ${pgVal(vendaEcommerce)}, ${pgVal(v.codEcommerce)}, ${pgVal(v.serNotaFiscal)}, ${pgVal(v.modeloVenda)}, ${pgVal(v.dadosEntrega ?? null)}, now())`;\n}\n\n// numero_nota_origem e tipo_cancelamento ficam FORA de propósito\n// (26/08/2026): /venda/obter-alterados-v1 nunca traz esses campos\n// preenchidos, entao incluir eles aqui sobrescrevia de volta pra NULL\n// toda vez que uma venda ja marcada cancelada/devolvida fosse\n// reprocessada por qualquer motivo -- achado com dado real (um\n// backfill derrubou 347 devolucoes marcadas pra 327). Esses 2 campos\n// sao exclusivos dos fluxos de Cancelamento/Devolucao abaixo, que\n// fazem UPDATE isolado, sem tocar o resto da linha.\nconst COLUNAS_VENDA = 'numero_nota, data_emissao, hora_emissao, codigo_vendedor, codigo_cliente, entrega, pagamento_na_entrega, condicao_pagamento, vlr_troco, numero_cupom_fiscal, numero_nota_fiscal, xml_nfe, cod_parceiro, cod_filial, venda_ifood, venda_ecommerce, cod_ecommerce, ser_nota_fiscal, modelo_venda, dados_entrega, updated_at';\nconst UPDATE_SET_VENDA = `data_emissao = EXCLUDED.data_emissao,\n  hora_emissao = EXCLUDED.hora_emissao,\n  codigo_vendedor = EXCLUDED.codigo_vendedor,\n  codigo_cliente = EXCLUDED.codigo_cliente,\n  entrega = EXCLUDED.entrega,\n  pagamento_na_entrega = EXCLUDED.pagamento_na_entrega,\n  condicao_pagamento = EXCLUDED.condicao_pagamento,\n  vlr_troco = EXCLUDED.vlr_troco,\n  numero_cupom_fiscal = EXCLUDED.numero_cupom_fiscal,\n  numero_nota_fiscal = EXCLUDED.numero_nota_fiscal,\n  xml_nfe = EXCLUDED.xml_nfe,\n  cod_parceiro = EXCLUDED.cod_parceiro,\n  venda_ifood = EXCLUDED.venda_ifood,\n  venda_ecommerce = EXCLUDED.venda_ecommerce,\n  cod_ecommerce = EXCLUDED.cod_ecommerce,\n  modelo_venda = EXCLUDED.modelo_venda,\n  dados_entrega = EXCLUDED.dados_entrega,\n  updated_at = now()`;\n\n// sem vendas: WHERE FALSE garante RETURNING vazio (0 items pro proximo node),\n// em vez de dar erro de sintaxe com VALUES vazio.\nlet sql = 'SELECT NULL::bigint AS id, NULL::int AS numero_nota, NULL::int AS cod_filial, NULL::text AS ser_nota_fiscal WHERE FALSE';\n\nif (vendas.length > 0) {\n  // ser_nota_fiscal nula precisa de um ON CONFLICT diferente --\n  // (numero_nota, cod_filial, ser_nota_fiscal) nunca \"bate\" quando a\n  // serie e NULL (Postgres trata cada NULL como distinto de si mesmo),\n  // entao cada reprocessamento duplicava a venda inteira em vez de\n  // atualizar. Precisa do indice parcial (numero_nota, cod_filial)\n  // where ser_nota_fiscal is null -- ver coletor/migracao_coletor.sql.\n  const comSerie = vendas.filter((v) => v.serNotaFiscal != null);\n  const semSerie = vendas.filter((v) => v.serNotaFiscal == null);\n\n  const codigosClientes = [...new Set(vendas.map((v) => v.codigoCliente).filter((c) => c != null))];\n  const codigosVendedores = [...new Set(vendas.map((v) => v.codigoVendedor).filter((c) => c != null))];\n  let stubsSql = '';\n  if (codigosClientes.length > 0) {\n    stubsSql += `INSERT INTO clientes (codigo) VALUES ${codigosClientes.map((c) => `(${pgVal(c)})`).join(',\\n')} ON CONFLICT (codigo) DO NOTHING;\\n`;\n  }\n  if (codigosVendedores.length > 0) {\n    stubsSql += `INSERT INTO vendedores (codigo, nome) VALUES ${codigosVendedores.map((c) => `(${pgVal(c)}, '(pendente sincronizacao)')`).join(',\\n')} ON CONFLICT (codigo) DO NOTHING;\\n`;\n  }\n\n  let insertsSql = '';\n  if (comSerie.length > 0) {\n    insertsSql += `INSERT INTO vendas (${COLUNAS_VENDA})\nVALUES ${comSerie.map(linhaVenda).join(',\\n')}\nON CONFLICT (numero_nota, cod_filial, ser_nota_fiscal) DO UPDATE SET\n  ${UPDATE_SET_VENDA}\nRETURNING id, numero_nota, cod_filial, ser_nota_fiscal;\\n`;\n  }\n  if (semSerie.length > 0) {\n    insertsSql += `INSERT INTO vendas (${COLUNAS_VENDA})\nVALUES ${semSerie.map(linhaVenda).join(',\\n')}\nON CONFLICT (numero_nota, cod_filial) WHERE ser_nota_fiscal IS NULL DO UPDATE SET\n  ${UPDATE_SET_VENDA}\nRETURNING id, numero_nota, cod_filial, ser_nota_fiscal;\\n`;\n  }\n\n  sql = stubsSql + insertsSql;\n}\n\nconst vendasComItens = vendas.map((v) => ({\n  numeroNota: v.numeroNota,\n  codFilial: v.codFilial,\n  serNotaFiscal: v.serNotaFiscal,\n  itens: v.itens || [],\n}));\n\nreturn [{ json: { sql, vendasComItens, cursorNovo: dataFinal } }];"
-      }
+      "alwaysOutputData": true
     },
     {
-      "id": "ven-executar-vendas",
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "{{ $json.sql }}",
+        "options": {}
+      },
+      "id": "7158a978-e14f-4f3f-bc8a-639c4d2cc40f",
       "name": "Executar upsert vendas",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
       "position": [
-        840,
-        1160
+        3776,
+        2544
       ],
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "={{ $json.sql }}",
-        "options": {}
-      },
       "credentials": {
         "postgres": {
-          "name": "Supabase Postgres"
+          "id": "edefNEsD3808UU0h",
+          "name": "Postgres MultFarmapp"
         }
-      }
+      },
+      "alwaysOutputData": true
     },
     {
-      "id": "ven-itens",
+      "parameters": {
+        "jsCode": "// input direto: linhas RETURNING (id, numero_nota, cod_filial, ser_nota_fiscal) do node anterior.\n// pode vir vazio se nenhuma venda foi upsertada neste ciclo.\nconst TENANT_ID = $('Para cada tenant ativo').first().json.tenant_id;\n\n// Le do static data global gravado por 'Mapear vendas' -- evita de vez\n// qualquer referencia cruzada entre nodes ou node Merge, ambos\n// instaveis dentro do Loop Over Items (bug conhecido do n8n).\nconst staticData = $getWorkflowStaticData('global');\nconst vendasComItens = staticData.vendasComItens || [];\nconst cursorNovo = staticData.cursorNovo;\nconst retornados = $input.all().map((item) => item.json).filter((x) => x.id !== undefined);\n\nfunction pgVal(v) {\n  if (v === null || v === undefined) return 'NULL';\n  if (typeof v === 'boolean') return v ? 'TRUE' : 'FALSE';\n  if (typeof v === 'number') return Number.isFinite(v) ? String(v) : 'NULL';\n  if (typeof v === 'object') return `'${JSON.stringify(v).replace(/'/g, \"''\")}'::jsonb`;\n  return `'${String(v).replace(/'/g, \"''\")}'`;\n}\n\n// chave natural pra casar RETURNING <-> venda original (nota+filial+serie)\nfunction chave(numeroNota, codFilial, serNotaFiscal) {\n  return `${numeroNota}|${codFilial ?? ''}|${serNotaFiscal ?? ''}`;\n}\n\nconst idPorChave = new Map(\n  retornados\n    .filter((r) => r.id != null)\n    .map((r) => [chave(r.numero_nota, r.cod_filial, r.ser_nota_fiscal), r.id])\n);\n\n// [10/08/2026] NAO deduplicar itens dentro da mesma nota -- item\n// \"repetido\" (mesmo produto/valor 2x numa nota) pode ser venda real\n// (operador bipou 2x em vez de usar quantidade 2), nao bug de sync.\n// Confirmado direto na tela da Trier pra nota 749414 (produto 3730,\n// Rafaela): as 2 linhas existem DE VERDADE no sistema deles, Total da\n// Nota = soma das duas. Uma tentativa anterior de deduplicar aqui foi\n// revertida por isso -- ver historico da conversa/commit.\nconst linhasItens = [];\nconst codigosVendedoresItens = new Set();\nlet vendasSemId = 0;\nfor (const venda of vendasComItens) {\n  const vendaId = idPorChave.get(chave(venda.numeroNota, venda.codFilial, venda.serNotaFiscal));\n  if (!vendaId) { vendasSemId += 1; continue; } // nao deveria acontecer -- pula em vez de quebrar o lote inteiro\n  for (const [indice, item] of (venda.itens || []).entries()) {\n    // vendaComDesconto na API real e NUMBER (valor com desconto), mas\n    // venda_itens.venda_com_desconto no schema atual e BOOLEAN.\n    // Mapeamento provisorio -- ver coletor/migracao_coletor.sql.\n    const vendaComDescontoBool = item.vendaComDesconto != null && item.vendaComDesconto !== item.valorTotalLiquido;\n    if (item.codigoVendedor != null) codigosVendedoresItens.add(item.codigoVendedor);\n    linhasItens.push(\n      `(${pgVal(TENANT_ID)}, ${pgVal(vendaId)}, ${pgVal(item.codigoProduto)}, ${pgVal(item.codigoVendedor)}, ${pgVal(item.quantidadeProdutos)}, ${pgVal(item.valorTotalBruto)}, ${pgVal(item.valorTotalLiquido)}, ${pgVal(item.valorTotalCusto)}, ${pgVal(item.parceiro)}, ${pgVal(item.codigoMedico)}, ${pgVal(item.codBarras)}, ${pgVal(item.numSequencial ?? indice + 1)}, ${pgVal(item.prcComissao)}, ${pgVal(item.vlrDesconto)}, ${pgVal(item.vlrUnitario)}, ${pgVal(item.vlrCustoAquisicao)}, ${pgVal(item.vlrCustoProduto)}, ${pgVal(item.tabelaDesconto)}, ${pgVal(item.prcDesconto)}, ${pgVal(item.prcDescontoMax)}, ${pgVal(vendaComDescontoBool)})`\n    );\n  }\n}\nif (vendasSemId > 0) {\n  console.warn(`[venda] ${vendasSemId} venda(s) sem id retornado -- itens dela(s) nao foram gravados neste ciclo.`);\n}\n\n// Casar item por item via ON CONFLICT (venda_id, num_sequencial) com\n// num_sequencial sintetizado pela posicao no array nao funciona: a\n// Trier nao garante que a ordem dos itens de uma nota seja a mesma\n// entre chamadas diferentes, entao reprocessar uma venda ja\n// sincronizada podia sintetizar um num_sequencial diferente pro mesmo\n// item fisico e duplica-lo em vez de atualizar (achado em producao:\n// 28.643 itens duplicados, 30,5% da tabela -- ver migracao_coletor.sql\n// item 5). Em vez disso: apaga todos os itens das vendas deste ciclo\n// antes de reinserir os itens atuais -- imune a ordem.\n//\n// NOTA: isso apaga em cascata qualquer venda_item_receitas anexada a\n// um item dessas vendas (FK on delete cascade). Sem uso real dessa\n// feature em producao ainda -- se passar a ter, precisa capturar e\n// reanexar a receita ao item novo antes deste delete.\nconst vendaIdsDoLote = [...idPorChave.values()];\nlet deleteSql = '';\nif (vendaIdsDoLote.length > 0) {\n  deleteSql = `DELETE FROM venda_itens WHERE venda_id IN (${vendaIdsDoLote.map(pgVal).join(', ')});\\n`;\n}\n\nlet sql = deleteSql || 'SELECT 1;';\nif (linhasItens.length > 0) {\n  // mesmo motivo do stub em 'Mapear vendas': item pode ter um vendedor\n  // diferente do vendedor da nota, e a FK de venda_itens.codigo_vendedor\n  // pode nao ter sido satisfeita ainda por esse outro codigo.\n  let stubsSqlItens = '';\n  if (codigosVendedoresItens.size > 0) {\n    stubsSqlItens = `INSERT INTO vendedores (tenant_id, codigo, nome) VALUES ${[...codigosVendedoresItens].map((c) => `(${pgVal(TENANT_ID)}, ${pgVal(c)}, '(pendente sincronizacao)')`).join(',\\n')} ON CONFLICT (tenant_id, codigo) DO NOTHING;\\n`;\n  }\n  sql = deleteSql + stubsSqlItens + `INSERT INTO venda_itens (tenant_id, venda_id, codigo_produto, codigo_vendedor, quantidade_produtos, valor_total_bruto, valor_total_liquido, valor_total_custo, parceiro, codigo_medico, cod_barras, num_sequencial, prc_comissao, vlr_desconto, vlr_unitario, vlr_custo_aquisicao, vlr_custo_produto, tabela_desconto, prc_desconto, prc_desconto_max, venda_com_desconto)\nVALUES ${linhasItens.join(',\\n')};`;\n}\n\nsql += `\\nUPDATE sync_control SET last_cursor = '${cursorNovo}', last_synced_at = now() WHERE tenant_id = '${TENANT_ID}' AND entity_name = 'venda';`;\n\nreturn [{ json: { sql, quantidadeItens: linhasItens.length }, pairedItem: { item: 0 } }];"
+      },
+      "id": "2c8c0f57-70b4-4904-b6b4-368e4b390865",
       "name": "Preparar itens e cursor",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1120,
-        1160
+        4176,
+        2544
       ],
-      "parameters": {
-        "language": "javaScript",
-        "jsCode": "// input direto: linhas RETURNING (id, numero_nota, cod_filial, ser_nota_fiscal) do node anterior.\n// pode vir vazio se nenhuma venda foi upsertada neste ciclo.\nconst retornados = $input.all().map((item) => item.json);\n\n// .first() em vez de .item: 'Mapear vendas' sempre emite exatamente 1 item\n// (mesmo com 0 vendas), mas quando o RETURNING deste ciclo vem vazio o node\n// Postgres anterior nao emite nenhum item de saida -- sem item 'atual', o\n// pareamento automatico do .item quebra ('Paired item data ... unavailable').\n// .first() busca o item direto no node de origem, sem depender desse\n// pareamento.\nconst origem = $('Mapear vendas').first().json;\nconst vendasComItens = origem.vendasComItens || [];\nconst cursorNovo = origem.cursorNovo;\n\nfunction pgVal(v) {\n  if (v === null || v === undefined) return 'NULL';\n  if (typeof v === 'boolean') return v ? 'TRUE' : 'FALSE';\n  if (typeof v === 'number') return Number.isFinite(v) ? String(v) : 'NULL';\n  if (typeof v === 'object') return `'${JSON.stringify(v).replace(/'/g, \"''\")}'::jsonb`;\n  return `'${String(v).replace(/'/g, \"''\")}'`;\n}\n\n// chave natural pra casar RETURNING <-> venda original (nota+filial+serie)\nfunction chave(numeroNota, codFilial, serNotaFiscal) {\n  return `${numeroNota}|${codFilial ?? ''}|${serNotaFiscal ?? ''}`;\n}\n\nconst idPorChave = new Map(\n  retornados\n    .filter((r) => r.id != null)\n    .map((r) => [chave(r.numero_nota, r.cod_filial, r.ser_nota_fiscal), r.id])\n);\n\n// [10/08/2026] NAO deduplicar itens dentro da mesma nota -- item\n// \"repetido\" (mesmo produto/valor 2x numa nota) pode ser venda real\n// (operador bipou 2x em vez de usar quantidade 2), nao bug de sync.\n// Confirmado direto na tela da Trier pra nota 749414 (produto 3730,\n// Rafaela): as 2 linhas existem DE VERDADE no sistema deles, Total da\n// Nota = soma das duas. Uma tentativa anterior de deduplicar aqui foi\n// revertida por isso -- ver historico da conversa/commit.\nconst linhasItens = [];\nconst codigosVendedoresItens = new Set();\nlet vendasSemId = 0;\nfor (const venda of vendasComItens) {\n  const vendaId = idPorChave.get(chave(venda.numeroNota, venda.codFilial, venda.serNotaFiscal));\n  if (!vendaId) { vendasSemId += 1; continue; } // nao deveria acontecer -- pula em vez de quebrar o lote inteiro\n  for (const [indice, item] of (venda.itens || []).entries()) {\n    // vendaComDesconto na API real e NUMBER (valor com desconto), mas\n    // venda_itens.venda_com_desconto no schema atual e BOOLEAN.\n    // Mapeamento provisorio -- ver coletor/migracao_coletor.sql.\n    const vendaComDescontoBool = item.vendaComDesconto != null && item.vendaComDesconto !== item.valorTotalLiquido;\n    if (item.codigoVendedor != null) codigosVendedoresItens.add(item.codigoVendedor);\n    linhasItens.push(\n      `(${pgVal(vendaId)}, ${pgVal(item.codigoProduto)}, ${pgVal(item.codigoVendedor)}, ${pgVal(item.quantidadeProdutos)}, ${pgVal(item.valorTotalBruto)}, ${pgVal(item.valorTotalLiquido)}, ${pgVal(item.valorTotalCusto)}, ${pgVal(item.parceiro)}, ${pgVal(item.codigoMedico)}, ${pgVal(item.codBarras)}, ${pgVal(item.numSequencial ?? indice + 1)}, ${pgVal(item.prcComissao)}, ${pgVal(item.vlrDesconto)}, ${pgVal(item.vlrUnitario)}, ${pgVal(item.vlrCustoAquisicao)}, ${pgVal(item.vlrCustoProduto)}, ${pgVal(item.tabelaDesconto)}, ${pgVal(item.prcDesconto)}, ${pgVal(item.prcDescontoMax)}, ${pgVal(vendaComDescontoBool)})`\n    );\n  }\n}\nif (vendasSemId > 0) {\n  console.warn(`[venda] ${vendasSemId} venda(s) sem id retornado -- itens dela(s) nao foram gravados neste ciclo.`);\n}\n\n// Casar item por item via ON CONFLICT (venda_id, num_sequencial) com\n// num_sequencial sintetizado pela posicao no array nao funciona: a\n// Trier nao garante que a ordem dos itens de uma nota seja a mesma\n// entre chamadas diferentes, entao reprocessar uma venda ja\n// sincronizada podia sintetizar um num_sequencial diferente pro mesmo\n// item fisico e duplica-lo em vez de atualizar (achado em producao:\n// 28.643 itens duplicados, 30,5% da tabela -- ver migracao_coletor.sql\n// item 5). Em vez disso: apaga todos os itens das vendas deste ciclo\n// antes de reinserir os itens atuais -- imune a ordem.\n//\n// NOTA: isso apaga em cascata qualquer venda_item_receitas anexada a\n// um item dessas vendas (FK on delete cascade). Sem uso real dessa\n// feature em producao ainda -- se passar a ter, precisa capturar e\n// reanexar a receita ao item novo antes deste delete.\nconst vendaIdsDoLote = [...idPorChave.values()];\nlet deleteSql = '';\nif (vendaIdsDoLote.length > 0) {\n  deleteSql = `DELETE FROM venda_itens WHERE venda_id IN (${vendaIdsDoLote.map(pgVal).join(', ')});\\n`;\n}\n\nlet sql = deleteSql || 'SELECT 1';\nif (linhasItens.length > 0) {\n  // mesmo motivo do stub em 'Mapear vendas': item pode ter um vendedor\n  // diferente do vendedor da nota, e a FK de venda_itens.codigo_vendedor\n  // pode nao ter sido satisfeita ainda por esse outro codigo.\n  let stubsSqlItens = '';\n  if (codigosVendedoresItens.size > 0) {\n    stubsSqlItens = `INSERT INTO vendedores (codigo, nome) VALUES ${[...codigosVendedoresItens].map((c) => `(${pgVal(c)}, '(pendente sincronizacao)')`).join(',\\n')} ON CONFLICT (codigo) DO NOTHING;\\n`;\n  }\n  sql = deleteSql + stubsSqlItens + `INSERT INTO venda_itens (venda_id, codigo_produto, codigo_vendedor, quantidade_produtos, valor_total_bruto, valor_total_liquido, valor_total_custo, parceiro, codigo_medico, cod_barras, num_sequencial, prc_comissao, vlr_desconto, vlr_unitario, vlr_custo_aquisicao, vlr_custo_produto, tabela_desconto, prc_desconto, prc_desconto_max, venda_com_desconto)\nVALUES ${linhasItens.join(',\\n')};`;\n}\n\nsql += `\\nUPDATE sync_control SET last_cursor = '${cursorNovo}', last_synced_at = now() WHERE entity_name = 'venda';`;\n\nreturn [{ json: { sql, quantidadeItens: linhasItens.length } }];"
-      }
+      "alwaysOutputData": true
     },
     {
-      "id": "ven-executar-itens",
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "{{ $json.sql }}",
+        "options": {}
+      },
+      "id": "5b1ec662-1b6c-4fa7-ae23-a93cff91c9a8",
       "name": "Executar itens + cursor",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
       "position": [
-        1400,
-        1160
+        4464,
+        2544
       ],
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "={{ $json.sql }}",
-        "options": {}
-      },
       "credentials": {
         "postgres": {
-          "name": "Supabase Postgres"
+          "id": "edefNEsD3808UU0h",
+          "name": "Postgres MultFarmapp"
         }
       }
     },
     {
-      "id": "can-nota",
+      "parameters": {
+        "content": "### Cancelamento de venda (estorno/devolucao/exclusao)\nsync_control.entity_name = 'venda_cancelamento' | so UPDATE em vendas.tipo_cancelamento (nao insere venda nova).\n\n[12/08/2026 removido, 26/08/2026 reativado] /venda/obter-alterados-v1 NUNCA traz tipoCancelamento/numeroNotaOrigem preenchidos, mesmo pra venda excluida (confirmado pelo suporte da Trier em 26/08 -- nota 750651 sincroniza como venda normal, sem nenhum sinal de exclusao) -- so esse endpoint separado tem esse dado. Sem isso, vendas estornadas/excluidas contavam como venda normal no Painel e no Relatorio mensal (ver migracao_exclui_estorno_desempenho.sql, calcular_metricas_mes() e coletor/backfill_cancelamentos.js pro que ja estava sincronizado antes desse fluxo existir/voltar a existir).",
+        "height": 288,
+        "width": 1800
+      },
+      "id": "f9e4d8cb-e827-4c00-be23-132932814d63",
       "name": "Nota - Cancelamento venda",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
-        0,
-        1440
-      ],
-      "parameters": {
-        "width": 1800,
-        "height": 160,
-        "content": "### Cancelamento de venda (estorno/devolucao/exclusao)\nsync_control.entity_name = 'venda_cancelamento' | so UPDATE em vendas.tipo_cancelamento (nao insere venda nova).\n\n[12/08/2026 removido, 26/08/2026 reativado] /venda/obter-alterados-v1 NUNCA traz tipoCancelamento/numeroNotaOrigem preenchidos, mesmo pra venda excluida (confirmado pelo suporte da Trier em 26/08 -- nota 750651 sincroniza como venda normal, sem nenhum sinal de exclusao) -- so esse endpoint separado tem esse dado. Sem isso, vendas estornadas/excluidas contavam como venda normal no Painel e no Relatorio mensal (ver migracao_exclui_estorno_desempenho.sql, calcular_metricas_mes() e coletor/backfill_cancelamentos.js pro que ja estava sincronizado antes desse fluxo existir/voltar a existir)."
-      }
+        2928,
+        2736
+      ]
     },
     {
-      "id": "can-cursor",
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH boot AS (\n  INSERT INTO sync_control (tenant_id, entity_name, last_cursor)\n  VALUES ('{{ $('Para cada tenant ativo').item.json.tenant_id }}', 'cliente', '2000-01-01T00:00:00-03:00')\n  ON CONFLICT (tenant_id, entity_name) DO NOTHING\n  RETURNING last_cursor\n),\ncursor_atual AS (\n  SELECT COALESCE(\n    (SELECT last_cursor FROM boot),\n    (SELECT last_cursor FROM sync_control WHERE tenant_id = '{{ $('Para cada tenant ativo').item.json.tenant_id }}' AND entity_name = 'cliente')\n  ) AS last_cursor\n)\nSELECT\n  to_char(last_cursor AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM-DD\"T\"HH24:MI:SS') || '-0300' AS data_inicial,\n  to_char(now() AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM-DD\"T\"HH24:MI:SS') || '-0300' AS data_final\nFROM cursor_atual;\n",
+        "options": {}
+      },
+      "id": "a67e6886-1b57-419c-aea8-09480523a187",
       "name": "Ler cursor - Cancelamento",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
       "position": [
-        0,
-        1620
+        2976,
+        3104
       ],
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "WITH boot AS (\n  INSERT INTO sync_control (entity_name, last_cursor)\n  VALUES ('venda_cancelamento', '2000-01-01T00:00:00-03:00')\n  ON CONFLICT (entity_name) DO NOTHING\n  RETURNING last_cursor\n),\ncursor_atual AS (\n  SELECT COALESCE(\n    (SELECT last_cursor FROM boot),\n    (SELECT last_cursor FROM sync_control WHERE entity_name = 'venda_cancelamento')\n  ) AS last_cursor\n)\nSELECT\n  to_char(last_cursor AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM-DD\"T\"HH24:MI:SS') || '-0300' AS data_inicial,\n  to_char(now() AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM-DD\"T\"HH24:MI:SS') || '-0300' AS data_final\nFROM cursor_atual;",
-        "options": {}
-      },
       "credentials": {
         "postgres": {
-          "name": "Supabase Postgres"
+          "id": "edefNEsD3808UU0h",
+          "name": "Postgres MultFarmapp"
         }
       }
     },
     {
-      "id": "can-http",
-      "name": "Buscar cancelamentos (API)",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        280,
-        1620
-      ],
       "parameters": {
-        "method": "GET",
         "url": "https://api-sgf-gateway.triersistemas.com.br/sgfpod1/rest/integracao/venda/cancelamento/obter-alterados-v1",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
         "sendQuery": true,
         "queryParameters": {
           "parameters": [
@@ -588,77 +593,80 @@
             }
           ]
         },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ $('Para cada tenant ativo').item.json.trier_config.token }}"
+            }
+          ]
+        },
         "options": {}
       },
-      "credentials": {
-        "httpHeaderAuth": {
-          "name": "SGF Trier - Bearer"
-        }
-      }
+      "id": "637c7295-f363-4e35-9fcc-3d2a490a9c1e",
+      "name": "Buscar cancelamentos (API)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3264,
+        3104
+      ],
+      "alwaysOutputData": true
     },
     {
-      "id": "can-mapear",
+      "parameters": {
+        "jsCode": "// resposta da API pode chegar como 1 item cujo json E o array, ou ja\n// separada em N items (depende da versao do n8n) -- cobre os dois casos.\nconst TENANT_ID = $('Para cada tenant ativo').item.json.tenant_id;\n\nconst brutos = $input.all().map((i) => i.json).filter((o) => o && Object.keys(o).length > 0);\nconst linhas = brutos.length === 1 && Array.isArray(brutos[0]) ? brutos[0] : brutos;\nconst dataFinal = new Date().toISOString();\nconst QUANTIDADE = 999; // tem que bater com o 'quantidadeRegistros' do node HTTP Request\n\nfunction pgVal(v) {\n  if (v === null || v === undefined) return 'NULL';\n  if (typeof v === 'boolean') return v ? 'TRUE' : 'FALSE';\n  if (typeof v === 'number') return Number.isFinite(v) ? String(v) : 'NULL';\n  if (typeof v === 'object') return `'${JSON.stringify(v).replace(/'/g, \"''\")}'::jsonb`;\n  return `'${String(v).replace(/'/g, \"''\")}'`;\n}\n\nif (linhas.length >= QUANTIDADE) {\n  console.warn(`[cancelamento] pagina cheia (${QUANTIDADE}) neste ciclo -- pode ter cortado registros.`);\n}\n\n// So UPDATE em venda que ja existe (match por numero_nota+cod_filial) --\n// esse endpoint devolve o cancelamento em si, nao os dados completos da\n// venda original, entao nao da pra fazer upsert/insert aqui. Se a venda\n// original ainda nao sincronizou (ordem de chegada entre os 2 fluxos nao\n// e garantida), esse UPDATE simplesmente nao acha nada pra marcar --\n// tipo_cancelamento fica nulo ate um ciclo futuro reprocessar (a API\n// manda de novo enquanto estiver dentro da janela de \"alterados\").\nlet sql = 'SELECT 1;';\nif (linhas.length > 0) {\n  const valores = linhas.map((c) =>\n    `(${pgVal(c.numeroNota)}, ${pgVal(c.codFilial)}, ${pgVal(c.tipoCancelamento ?? 'E')})`\n  ).join(',\\n');\n  sql = `UPDATE vendas SET tipo_cancelamento = c.tipo_cancelamento, updated_at = now()\nFROM (VALUES ${valores}) AS c(numero_nota, cod_filial, tipo_cancelamento)\nWHERE vendas.tenant_id = '${TENANT_ID}' AND vendas.numero_nota = c.numero_nota AND vendas.cod_filial = c.cod_filial\n  AND vendas.tipo_cancelamento IS DISTINCT FROM c.tipo_cancelamento;`;\n}\nsql += `\\nUPDATE sync_control SET last_cursor = '${dataFinal}', last_synced_at = now() WHERE tenant_id = '${TENANT_ID}' AND entity_name = 'venda_cancelamento';`;\n\nreturn [{ json: { sql, quantidade: linhas.length }, pairedItem: { item: 0 } }];"
+      },
+      "id": "1f986a59-1918-44c1-b522-ef691008ca0f",
       "name": "Mapear cancelamentos",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        560,
-        1620
+        3536,
+        3104
       ],
-      "parameters": {
-        "language": "javaScript",
-        "jsCode": "// resposta da API pode chegar como 1 item cujo json E o array, ou ja\n// separada em N items (depende da versao do n8n) -- cobre os dois casos.\nconst brutos = $input.all().map((i) => i.json);\nconst linhas = brutos.length === 1 && Array.isArray(brutos[0]) ? brutos[0] : brutos;\nconst dataFinal = new Date().toISOString();\nconst QUANTIDADE = 999; // tem que bater com o 'quantidadeRegistros' do node HTTP Request\n\nfunction pgVal(v) {\n  if (v === null || v === undefined) return 'NULL';\n  if (typeof v === 'boolean') return v ? 'TRUE' : 'FALSE';\n  if (typeof v === 'number') return Number.isFinite(v) ? String(v) : 'NULL';\n  if (typeof v === 'object') return `'${JSON.stringify(v).replace(/'/g, \"''\")}'::jsonb`;\n  return `'${String(v).replace(/'/g, \"''\")}'`;\n}\n\nif (linhas.length >= QUANTIDADE) {\n  console.warn(`[cancelamento] pagina cheia (${QUANTIDADE}) neste ciclo -- pode ter cortado registros.`);\n}\n\n// So UPDATE em venda que ja existe (match por numero_nota+cod_filial) --\n// esse endpoint devolve o cancelamento em si, nao os dados completos da\n// venda original, entao nao da pra fazer upsert/insert aqui. Se a venda\n// original ainda nao sincronizou (ordem de chegada entre os 2 fluxos nao\n// e garantida), esse UPDATE simplesmente nao acha nada pra marcar --\n// tipo_cancelamento fica nulo ate um ciclo futuro reprocessar (a API\n// manda de novo enquanto estiver dentro da janela de \"alterados\").\nlet sql = 'SELECT 1';\nif (linhas.length > 0) {\n  const valores = linhas.map((c) =>\n    `(${pgVal(c.numeroNota)}, ${pgVal(c.codFilial)}, ${pgVal(c.tipoCancelamento ?? 'E')})`\n  ).join(',\\n');\n  sql = `UPDATE vendas SET tipo_cancelamento = c.tipo_cancelamento, updated_at = now()\nFROM (VALUES ${valores}) AS c(numero_nota, cod_filial, tipo_cancelamento)\nWHERE vendas.numero_nota = c.numero_nota AND vendas.cod_filial = c.cod_filial\n  AND vendas.tipo_cancelamento IS DISTINCT FROM c.tipo_cancelamento;`;\n}\nsql += `\\nUPDATE sync_control SET last_cursor = '${dataFinal}', last_synced_at = now() WHERE entity_name = 'venda_cancelamento';`;\n\nreturn [{ json: { sql, quantidade: linhas.length } }];"
-      }
+      "alwaysOutputData": true
     },
     {
-      "id": "can-executar",
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "{{ $json.sql }}",
+        "options": {}
+      },
+      "id": "932834ac-553b-479f-9a33-c6b85e69e5e2",
       "name": "Executar - Cancelamento",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
       "position": [
-        840,
-        1620
+        3824,
+        3104
       ],
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "={{ $json.sql }}",
-        "options": {}
-      },
       "credentials": {
         "postgres": {
-          "name": "Supabase Postgres"
+          "id": "edefNEsD3808UU0h",
+          "name": "Postgres MultFarmapp"
         }
       }
     },
     {
-      "id": "dev-nota",
+      "parameters": {
+        "content": "### Devolução total (26/08/2026)\nSó UPDATE em vendas.tipo_cancelamento (nao insere venda nova) -- sem sync_control/cursor, roda com janela fixa de 7 dias pra tras a cada ciclo (o endpoint só aceita data, sem hora, entao um cursor fino nao ajuda; idempotente via IS DISTINCT FROM, reprocessar a mesma devolução nao faz nada).\n\nAchado: devolução é um mecanismo DIFERENTE de cancelamento/estorno -- a nota original sincroniza normal via /venda/obter-alterados-v1, sem nenhum sinal de devolução; só /parcelas-cartao/estorno-v1 (endpoint de PARCELAS DE CARTÃO, não de vendas) traz o vínculo numeroNotaDevolucao -> numeroNotaOrigem. Reaproveita tipo_cancelamento='D' (a Trier já documenta esse valor pro campo). Só marca devolução TOTAL (valorNotaDevolucao == valorNotaOrigem) -- parcial fica de fora, ver Code node.",
+        "height": 212,
+        "width": 1800
+      },
+      "id": "bfbb11fd-4e8b-4999-b2fc-0aeda65f70eb",
       "name": "Nota - Devolução",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
-        0,
-        1840
-      ],
-      "parameters": {
-        "width": 1800,
-        "height": 180,
-        "content": "### Devolução total (26/08/2026)\nSó UPDATE em vendas.tipo_cancelamento (nao insere venda nova) -- sem sync_control/cursor, roda com janela fixa de 7 dias pra tras a cada ciclo (o endpoint só aceita data, sem hora, entao um cursor fino nao ajuda; idempotente via IS DISTINCT FROM, reprocessar a mesma devolução nao faz nada).\n\nAchado: devolução é um mecanismo DIFERENTE de cancelamento/estorno -- a nota original sincroniza normal via /venda/obter-alterados-v1, sem nenhum sinal de devolução; só /parcelas-cartao/estorno-v1 (endpoint de PARCELAS DE CARTÃO, não de vendas) traz o vínculo numeroNotaDevolucao -> numeroNotaOrigem. Reaproveita tipo_cancelamento='D' (a Trier já documenta esse valor pro campo). Só marca devolução TOTAL (valorNotaDevolucao == valorNotaOrigem) -- parcial fica de fora, ver Code node."
-      }
+        3008,
+        1520
+      ]
     },
     {
-      "id": "dev-http",
-      "name": "Buscar devoluções (API)",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        280,
-        1840
-      ],
       "parameters": {
-        "method": "GET",
         "url": "https://api-sgf-gateway.triersistemas.com.br/sgfpod1/rest/integracao/parcelas-cartao/estorno-v1",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
         "sendQuery": true,
         "queryParameters": {
           "parameters": [
@@ -680,80 +688,117 @@
             }
           ]
         },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ $('Para cada tenant ativo').item.json.trier_config.token }}"
+            }
+          ]
+        },
         "options": {}
       },
-      "credentials": {
-        "httpHeaderAuth": {
-          "name": "SGF Trier - Bearer"
-        }
-      }
+      "id": "cf9c36f9-230f-4b0f-8944-10088ec1e733",
+      "name": "Buscar devoluções (API)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3072,
+        1376
+      ],
+      "alwaysOutputData": true
     },
     {
-      "id": "dev-mapear",
+      "parameters": {
+        "jsCode": "// resposta vem como 1 objeto { estornos: [...] } (não array solto\n// como os outros endpoints do coletor).\nconst TENANT_ID = $('Para cada tenant ativo').item.json.tenant_id;\n\nconst brutos = $input.all().map((i) => i.json).filter((o) => o && Object.keys(o).length > 0);\nconst payload = brutos.length === 1 ? brutos[0] : {};\nconst linhas = Array.isArray(payload.estornos) ? payload.estornos : [];\n\nfunction pgVal(v) {\n  if (v === null || v === undefined) return 'NULL';\n  if (typeof v === 'number') return Number.isFinite(v) ? String(v) : 'NULL';\n  return `'${String(v).replace(/'/g, \"''\")}'`;\n}\n\n// Só devolução TOTAL (valor devolvido == valor da nota original) --\n// devolução parcial não deveria zerar a nota inteira, fica de fora até\n// existir tratamento pra abater só o item devolvido (achado 26/08/2026:\n// 7 de 365 no histórico eram parciais).\nconst totais = linhas.filter((d) => Math.abs(d.totalNotaDevolucao - d.totalNotaOrigem) < 0.01);\n\nconst COD_FILIAL = 1; // endpoint não devolve cod_filial no payload -- farmácia só tem essa filial\n\nlet sql = 'SELECT 1;';\nif (totais.length > 0) {\n  const valores = totais.map((d) => `(${pgVal(d.numeroNotaOrigem)}, ${COD_FILIAL})`).join(',\\n');\n  sql = `UPDATE vendas SET tipo_cancelamento = 'D', updated_at = now()\nFROM (VALUES ${valores}) AS d(numero_nota, cod_filial)\nWHERE vendas.tenant_id = '${TENANT_ID}' AND vendas.numero_nota = d.numero_nota AND vendas.cod_filial = d.cod_filial\n  AND vendas.tipo_cancelamento IS DISTINCT FROM 'D';`;\n}\n\nreturn [{ json: { sql, quantidade: totais.length, parciais: linhas.length - totais.length }, pairedItem: { item: 0 } }];"
+      },
+      "id": "4775e7ca-26a1-40a1-bad8-5647e9591b5f",
       "name": "Mapear devoluções",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        560,
-        1840
+        3360,
+        1376
       ],
-      "parameters": {
-        "language": "javaScript",
-        "jsCode": "// resposta vem como 1 objeto { estornos: [...] } (não array solto\n// como os outros endpoints do coletor).\nconst brutos = $input.all().map((i) => i.json);\nconst payload = brutos.length === 1 ? brutos[0] : {};\nconst linhas = Array.isArray(payload.estornos) ? payload.estornos : [];\n\nfunction pgVal(v) {\n  if (v === null || v === undefined) return 'NULL';\n  if (typeof v === 'number') return Number.isFinite(v) ? String(v) : 'NULL';\n  return `'${String(v).replace(/'/g, \"''\")}'`;\n}\n\n// Só devolução TOTAL (valor devolvido == valor da nota original) --\n// devolução parcial não deveria zerar a nota inteira, fica de fora até\n// existir tratamento pra abater só o item devolvido (achado 26/08/2026:\n// 7 de 365 no histórico eram parciais).\nconst totais = linhas.filter((d) => Math.abs(d.totalNotaDevolucao - d.totalNotaOrigem) < 0.01);\n\nconst COD_FILIAL = 1; // endpoint não devolve cod_filial no payload -- farmácia só tem essa filial\n\nlet sql = 'SELECT 1';\nif (totais.length > 0) {\n  const valores = totais.map((d) => `(${pgVal(d.numeroNotaOrigem)}, ${COD_FILIAL})`).join(',\\n');\n  sql = `UPDATE vendas SET tipo_cancelamento = 'D', updated_at = now()\nFROM (VALUES ${valores}) AS d(numero_nota, cod_filial)\nWHERE vendas.numero_nota = d.numero_nota AND vendas.cod_filial = d.cod_filial\n  AND vendas.tipo_cancelamento IS DISTINCT FROM 'D';`;\n}\n\nreturn [{ json: { sql, quantidade: totais.length, parciais: linhas.length - totais.length } }];"
-      }
+      "alwaysOutputData": true
     },
     {
-      "id": "dev-executar",
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "{{ $json.sql }}",
+        "options": {}
+      },
+      "id": "784d0f75-03aa-418c-a563-7a645865823b",
       "name": "Executar - Devolução",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
       "position": [
-        840,
-        1840
+        3648,
+        1376
       ],
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "={{ $json.sql }}",
-        "options": {}
-      },
       "credentials": {
         "postgres": {
-          "name": "Supabase Postgres"
+          "id": "edefNEsD3808UU0h",
+          "name": "Postgres MultFarmapp"
         }
       }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "select id as tenant_id, nome, trier_config\nfrom tenants\nwhere ativo = true;\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        1808,
+        1408
+      ],
+      "id": "bf8156b8-f192-4ad5-bdbd-f1b1f7d05bbc",
+      "name": "Buscar tenants ativos",
+      "credentials": {
+        "postgres": {
+          "id": "edefNEsD3808UU0h",
+          "name": "Postgres MultFarmapp"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        2224,
+        1408
+      ],
+      "id": "10b78e37-6557-45fc-a064-5f9ee3b262e4",
+      "name": "Para cada tenant ativo"
+    },
+    {
+      "parameters": {
+        "numberInputs": 6
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        5824,
+        3408
+      ],
+      "id": "ef578355-9675-4053-a0ae-a1ab6bd5da5f",
+      "name": "Merge"
     }
   ],
+  "pinData": {},
   "connections": {
     "A cada 15 min": {
       "main": [
         [
           {
-            "node": "Ler cursor - Vendedor",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "Ler cursor - Cliente",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "Ler cursor - Atendimentos",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "Ler cursor - Venda",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "Ler cursor - Cancelamento",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "Buscar devoluções (API)",
+            "node": "Buscar tenants ativos",
             "type": "main",
             "index": 0
           }
@@ -968,11 +1013,144 @@
           }
         ]
       ]
+    },
+    "Buscar tenants ativos": {
+      "main": [
+        [
+          {
+            "node": "Para cada tenant ativo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Para cada tenant ativo": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Ler cursor - Vendedor",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Buscar devoluções (API)",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Ler cursor - Cliente",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Ler cursor - Atendimentos",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Ler cursor - Venda",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Ler cursor - Cancelamento",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Executar - Vendedor": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Executar - Devolução": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Executar - Cliente": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Executar - Atendimentos": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 3
+          }
+        ]
+      ]
+    },
+    "Executar itens + cursor": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 4
+          }
+        ]
+      ]
+    },
+    "Executar - Cancelamento": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 5
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Para cada tenant ativo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "active": false,
   "settings": {
-    "executionOrder": "v1"
+    "executionOrder": "v1",
+    "binaryMode": "separate"
   },
-  "pinData": {}
+  "versionId": "052f60c8-5a1e-4033-abe3-0bb55de3e1f8",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "3c6254208dfc25270c0f6139aedc58cb4cf18d05739e92e54e373b12bd587439"
+  },
+  "nodeGroups": [],
+  "id": "oZ4V29v3vnkO8O8X",
+  "tags": []
 }

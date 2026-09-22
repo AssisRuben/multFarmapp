@@ -137,7 +137,7 @@ export function ClientesVendedorScreen() {
     };
     atualizarCache((ct) => [...ct, novo]);
     repository
-      .registrarContato({
+      .registrarContato(profile, {
         codigoCliente,
         motivo: 'uso_continuo',
         tipoContato,

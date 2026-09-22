@@ -21,6 +21,28 @@ create table vendedores (
 );
 
 -- ============================================================
+-- PROFILES — vincula um usuário do Supabase Auth a um vendedor e
+-- define seu papel (vendedor vs gestor). Preenchido manualmente (ou
+-- por processo administrativo) ao criar cada usuário no Supabase Auth
+-- — não é self-signup. Criada aqui (não em rls_policies.sql) porque
+-- `compras_classificacoes`/`comissoes_fechadas` mais abaixo já
+-- referenciam `profiles`, e `profiles.codigo_vendedor` referencia
+-- `vendedores` — precisa ficar entre as duas. RLS e policies de
+-- `profiles` continuam em rls_policies.sql.
+-- ============================================================
+create table profiles (
+  id uuid primary key references auth.users(id) on delete cascade,
+  codigo_vendedor integer references vendedores(codigo),
+  role text not null check (role in ('vendedor', 'gestor')),
+  -- Expo push token do dispositivo — gravado pelo próprio app no login
+  -- (ver AuthContext/lib/notifications.ts obterPushToken), lido pelo
+  -- workflow n8n de notificação de comissão (roda como service_role,
+  -- ignora RLS). Não é sensível, mas só o dono deveria escrever nele.
+  expo_push_token text,
+  created_at timestamptz default now()
+);
+
+-- ============================================================
 -- CLIENTE (ClienteIntegracaoDto)
 -- ============================================================
 create table clientes (

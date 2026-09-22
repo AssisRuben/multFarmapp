@@ -944,6 +944,7 @@ function TelaRankingGestor() {
   };
 
   const salvar = async () => {
+    if (!profile) return;
     const premiacaoRanking = premios
       .map((valor, index) => ({ posicao: index + 1, valor: parseDecimalBR(valor) }))
       .filter((p) => p.valor > 0);
@@ -981,7 +982,7 @@ function TelaRankingGestor() {
 
     setSalvando(true);
     try {
-      await repository.salvarCampanhaComplementar({
+      await repository.salvarCampanhaComplementar(profile, {
         id: editandoId ?? undefined,
         dataInicio,
         dataFim,
