@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
+  FlatList,
   Image,
   KeyboardAvoidingView,
   Linking,
@@ -15,6 +16,7 @@ import { useAuth } from '../context/AuthContext';
 import { colors } from '../theme/colors';
 import { buildWhatsAppUrl } from '../lib/whatsapp';
 import { alertar } from '../lib/alert';
+import { buscarSugestoesLogin } from '../lib/loginHistory';
 
 const WHATSAPP_SUPORTE = '85988503418';
 
@@ -28,20 +30,33 @@ async function abrirWhatsAppSuporte() {
   }
 }
 
-// Vendedor loga só com usuário (sem "@") — a Trier não tem e-mail
-// cadastrado pra ninguém, então a conta é criada com um e-mail interno
-// fake (usuario@farmapp.local, nunca recebe e-mail de verdade) e a
-// pessoa nem precisa saber que isso existe por trás. Gestor continua
-// digitando o e-mail real normalmente (já tem "@", passa direto).
-function credencialLogin(digitado: string): string {
-  const valor = digitado.trim();
-  return valor.includes('@') ? valor : `${valor.toLowerCase()}@farmapp.local`;
+interface Sugestao {
+  nome: string;
+  credencial: string;
 }
 
 export function LoginScreen() {
   const { signIn, signingIn, error } = useAuth();
   const [email, setEmail] = useState('');
   const [senha, setSenha] = useState('');
+  const [sugestoes, setSugestoes] = useState<Sugestao[]>([]);
+
+  // Sugere pelo histórico LOCAL desse aparelho (ver lib/loginHistory) —
+  // some assim que o campo esvazia ou vira e-mail completo (já não faz
+  // sentido sugerir mais nada depois que a pessoa já escreveu o "@").
+  const aoDigitarUsuario = async (texto: string) => {
+    setEmail(texto);
+    if (!texto.trim() || texto.includes('@')) {
+      setSugestoes([]);
+      return;
+    }
+    setSugestoes(await buscarSugestoesLogin(texto));
+  };
+
+  const escolherSugestao = (s: Sugestao) => {
+    setEmail(s.credencial);
+    setSugestoes([]);
+  };
 
   return (
     <KeyboardAvoidingView
@@ -64,8 +79,22 @@ export function LoginScreen() {
             placeholderTextColor={colors.textMuted}
             autoCapitalize="none"
             value={email}
-            onChangeText={setEmail}
+            onChangeText={aoDigitarUsuario}
           />
+          {sugestoes.length > 0 && (
+            <View style={styles.sugestoesBox}>
+              <FlatList
+                data={sugestoes}
+                keyExtractor={(s) => s.credencial}
+                keyboardShouldPersistTaps="handled"
+                renderItem={({ item }) => (
+                  <Pressable style={styles.sugestaoItem} onPress={() => escolherSugestao(item)}>
+                    <Text style={styles.sugestaoTexto}>{item.nome}</Text>
+                  </Pressable>
+                )}
+              />
+            </View>
+          )}
           <TextInput
             style={styles.input}
             placeholder="Senha"
@@ -79,7 +108,7 @@ export function LoginScreen() {
 
           <Pressable
             style={[styles.button, signingIn && styles.buttonDisabled]}
-            onPress={() => signIn(credencialLogin(email), senha)}
+            onPress={() => signIn(email, senha)}
             disabled={signingIn}
           >
             {signingIn ? (
@@ -137,6 +166,23 @@ const styles = StyleSheet.create({
   buttonDisabled: { opacity: 0.7 },
   buttonText: { color: colors.white, fontWeight: '600', fontSize: 16 },
   error: { color: colors.red, marginBottom: 8 },
+  sugestoesBox: {
+    backgroundColor: colors.white,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginTop: -8,
+    marginBottom: 12,
+    maxHeight: 160,
+    overflow: 'hidden',
+  },
+  sugestaoItem: {
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  sugestaoTexto: { fontSize: 14, color: colors.textPrimary },
   hint: { color: colors.textMuted, fontSize: 12, marginTop: 20, lineHeight: 18 },
   whatsappLink: { color: colors.success, fontWeight: '700' },
 });

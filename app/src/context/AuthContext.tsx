@@ -2,11 +2,22 @@ import React, { createContext, useContext, useEffect, useMemo, useState } from '
 import { repository } from '../data';
 import { obterPushToken } from '../lib/notifications';
 import { withTimeout } from '../lib/timeout';
+import { salvarLoginHistorico } from '../lib/loginHistory';
 import { Profile } from '../types/domain';
 
 // Sem isso, wifi ruim (portal cativo, sinal fraco) trava a chamada ao
 // Supabase pra sempre e a tela fica girando sem nunca dar erro.
 const TIMEOUT_MS = 15000;
+
+// Vendedor loga só com usuário (sem "@") — a Trier não tem e-mail
+// cadastrado pra ninguém, então a conta é criada com um e-mail interno
+// fake (usuario@farmapp.local, nunca recebe e-mail de verdade) e a
+// pessoa nem precisa saber que isso existe por trás. Gestor continua
+// digitando o e-mail real normalmente (já tem "@", passa direto).
+function credencialLogin(digitado: string): string {
+  const valor = digitado.trim();
+  return valor.includes('@') ? valor : `${valor.toLowerCase()}@farmapp.local`;
+}
 
 // Registra (ou atualiza) o Expo push token no perfil logado — usado
 // pelo n8n pra mandar push de verdade (ex.: subiu de faixa de
@@ -48,17 +59,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       .finally(() => setLoadingSession(false));
   }, []);
 
-  const signIn = async (email: string, senha: string) => {
+  const signIn = async (digitado: string, senha: string) => {
     setSigningIn(true);
     setError(null);
     try {
       const loggedProfile = await withTimeout(
-        repository.login(email, senha),
+        repository.login(credencialLogin(digitado), senha),
         TIMEOUT_MS,
         'Sem conexão com o servidor. Verifique sua internet e tente novamente.'
       );
       setProfile(loggedProfile);
       registrarPushToken(loggedProfile);
+      // guarda o que a pessoa DIGITOU (não o e-mail transformado) pra
+      // sugerir de novo da próxima vez, só nesse aparelho.
+      salvarLoginHistorico(loggedProfile.nome, digitado.trim());
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Falha ao entrar.');
     } finally {
